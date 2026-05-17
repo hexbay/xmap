@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 	"github.com/projectdiscovery/gologger"
-	"github.com/tongchengbin/appfinger/pkg/external/customrules"
-	"github.com/tongchengbin/appfinger/pkg/rule"
+	"github.com/hexbay/appfinger/pkg/external/customrules"
+	"github.com/hexbay/appfinger/pkg/rule"
 )
 
 // InitWebRuleManager 初始化Web指纹规则管理器

@@ -1,4 +1,4 @@
-module github.com/tongchengbin/xmap
+module github.com/hexbay/xmap
 
 go 1.23
 
@@ -12,7 +12,7 @@ require (
 	github.com/projectdiscovery/gologger v1.1.46
 	github.com/remeh/sizedwaitgroup v1.0.0
 	github.com/stretchr/testify v1.10.0
-	github.com/tongchengbin/appfinger v1.6.15
+	github.com/hexbay/appfinger v1.6.16
 )
 
 require (

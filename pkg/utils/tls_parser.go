@@ -16,7 +16,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/tongchengbin/xmap/pkg/types"
+	"github.com/hexbay/xmap/pkg/types"
 )
 
 // TLS 记录类型

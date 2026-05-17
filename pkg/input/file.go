@@ -3,7 +3,7 @@ package input
 import (
 	"bufio"
 	"bytes"
-	"github.com/tongchengbin/xmap/pkg/types"
+	"github.com/hexbay/xmap/pkg/types"
 	"io"
 	"os"
 	"strings"

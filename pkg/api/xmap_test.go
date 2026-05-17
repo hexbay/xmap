@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"github.com/tongchengbin/xmap/testutils"
+	"github.com/hexbay/xmap/testutils"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -14,7 +14,7 @@ import (
 	"github.com/projectdiscovery/gologger"
 	"github.com/projectdiscovery/gologger/levels"
 	"github.com/stretchr/testify/assert"
-	"github.com/tongchengbin/xmap/pkg/types"
+	"github.com/hexbay/xmap/pkg/types"
 )
 
 func createXmap() *XMap {

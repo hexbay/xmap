@@ -1,7 +1,7 @@
 package scanner
 
 import (
-	"github.com/tongchengbin/xmap/pkg/types"
+	"github.com/hexbay/xmap/pkg/types"
 	"net/url"
 	"time"
 )

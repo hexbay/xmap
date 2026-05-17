@@ -3,7 +3,7 @@ package scanner
 import (
 	"errors"
 	"github.com/projectdiscovery/gologger"
-	"github.com/tongchengbin/xmap/pkg/types"
+	"github.com/hexbay/xmap/pkg/types"
 )
 
 // PortObserverEntry 表示一个端口状态观测记录

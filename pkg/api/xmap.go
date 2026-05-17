@@ -8,15 +8,15 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/tongchengbin/appfinger/pkg/external/customrules"
+	"github.com/hexbay/appfinger/pkg/external/customrules"
 
 	"github.com/remeh/sizedwaitgroup"
-	"github.com/tongchengbin/xmap/pkg/input"
-	"github.com/tongchengbin/xmap/pkg/scanner"
+	"github.com/hexbay/xmap/pkg/input"
+	"github.com/hexbay/xmap/pkg/scanner"
 
 	"github.com/projectdiscovery/gologger"
-	"github.com/tongchengbin/xmap/pkg/types"
-	"github.com/tongchengbin/xmap/pkg/web"
+	"github.com/hexbay/xmap/pkg/types"
+	"github.com/hexbay/xmap/pkg/web"
 )
 
 // ScannerConfig 扫描器配置接口

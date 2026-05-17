@@ -11,7 +11,7 @@ import (
 
 	"github.com/projectdiscovery/gologger"
 
-	"github.com/tongchengbin/xmap/pkg/types"
+	"github.com/hexbay/xmap/pkg/types"
 )
 
 // Outer 定义结果输出接口

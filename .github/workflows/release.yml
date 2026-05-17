@@ -78,25 +78,25 @@ jobs:
           选择适合你系统的版本:
           
           **Linux:**
-          - [xmap-${{ steps.version.outputs.VERSION }}-linux-amd64.tar.gz](https://github.com/tongchengbin/xmap/releases/download/${{ steps.version.outputs.VERSION }}/xmap-${{ steps.version.outputs.VERSION }}-linux-amd64.tar.gz)
-          - [xmap-${{ steps.version.outputs.VERSION }}-linux-arm64.tar.gz](https://github.com/tongchengbin/xmap/releases/download/${{ steps.version.outputs.VERSION }}/xmap-${{ steps.version.outputs.VERSION }}-linux-arm64.tar.gz)
+          - [xmap-${{ steps.version.outputs.VERSION }}-linux-amd64.tar.gz](https://github.com/hexbay/xmap/releases/download/${{ steps.version.outputs.VERSION }}/xmap-${{ steps.version.outputs.VERSION }}-linux-amd64.tar.gz)
+          - [xmap-${{ steps.version.outputs.VERSION }}-linux-arm64.tar.gz](https://github.com/hexbay/xmap/releases/download/${{ steps.version.outputs.VERSION }}/xmap-${{ steps.version.outputs.VERSION }}-linux-arm64.tar.gz)
           
           **macOS:**
-          - [xmap-${{ steps.version.outputs.VERSION }}-darwin-amd64.tar.gz](https://github.com/tongchengbin/xmap/releases/download/${{ steps.version.outputs.VERSION }}/xmap-${{ steps.version.outputs.VERSION }}-darwin-amd64.tar.gz)
-          - [xmap-${{ steps.version.outputs.VERSION }}-darwin-arm64.tar.gz](https://github.com/tongchengbin/xmap/releases/download/${{ steps.version.outputs.VERSION }}/xmap-${{ steps.version.outputs.VERSION }}-darwin-arm64.tar.gz)
+          - [xmap-${{ steps.version.outputs.VERSION }}-darwin-amd64.tar.gz](https://github.com/hexbay/xmap/releases/download/${{ steps.version.outputs.VERSION }}/xmap-${{ steps.version.outputs.VERSION }}-darwin-amd64.tar.gz)
+          - [xmap-${{ steps.version.outputs.VERSION }}-darwin-arm64.tar.gz](https://github.com/hexbay/xmap/releases/download/${{ steps.version.outputs.VERSION }}/xmap-${{ steps.version.outputs.VERSION }}-darwin-arm64.tar.gz)
           
           **Windows:**
-          - [xmap-${{ steps.version.outputs.VERSION }}-windows-amd64.zip](https://github.com/tongchengbin/xmap/releases/download/${{ steps.version.outputs.VERSION }}/xmap-${{ steps.version.outputs.VERSION }}-windows-amd64.zip)
-          - [xmap-${{ steps.version.outputs.VERSION }}-windows-arm64.zip](https://github.com/tongchengbin/xmap/releases/download/${{ steps.version.outputs.VERSION }}/xmap-${{ steps.version.outputs.VERSION }}-windows-arm64.zip)
+          - [xmap-${{ steps.version.outputs.VERSION }}-windows-amd64.zip](https://github.com/hexbay/xmap/releases/download/${{ steps.version.outputs.VERSION }}/xmap-${{ steps.version.outputs.VERSION }}-windows-amd64.zip)
+          - [xmap-${{ steps.version.outputs.VERSION }}-windows-arm64.zip](https://github.com/hexbay/xmap/releases/download/${{ steps.version.outputs.VERSION }}/xmap-${{ steps.version.outputs.VERSION }}-windows-arm64.zip)
           
           ### 🔍 校验和
-          - [checksums.txt](https://github.com/tongchengbin/xmap/releases/download/${{ steps.version.outputs.VERSION }}/checksums.txt)
+          - [checksums.txt](https://github.com/hexbay/xmap/releases/download/${{ steps.version.outputs.VERSION }}/checksums.txt)
           
           ### 📋 安装方法
           
           **使用 go install:**
           ```bash
-          go install github.com/tongchengbin/xmap@${{ steps.version.outputs.VERSION }}
+          go install github.com/hexbay/xmap@${{ steps.version.outputs.VERSION }}
           ```
           
           **手动安装:**

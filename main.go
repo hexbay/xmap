@@ -2,11 +2,11 @@ package main
 
 import (
 	"fmt"
-	"github.com/tongchengbin/xmap/pkg/api"
+	"github.com/hexbay/xmap/pkg/api"
 	"os"
 
 	"github.com/projectdiscovery/gologger"
-	"github.com/tongchengbin/xmap/pkg/runner"
+	"github.com/hexbay/xmap/pkg/runner"
 )
 
 func main() {

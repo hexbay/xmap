@@ -12,8 +12,8 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/tongchengbin/xmap/pkg/api"
-	"github.com/tongchengbin/xmap/pkg/types"
+	"github.com/hexbay/xmap/pkg/api"
+	"github.com/hexbay/xmap/pkg/types"
 )
 
 // TestProxyConnection 测试通过代理连接到目标服务器

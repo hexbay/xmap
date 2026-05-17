@@ -7,11 +7,11 @@
 *快速、准确、美观的网络服务发现和指纹识别*
 
 [![Go Version](https://img.shields.io/badge/Go-1.21+-00ADD8?style=for-the-badge&logo=go)](https://golang.org/)
-[![Release](https://img.shields.io/github/v/release/tongchengbin/xmap?style=for-the-badge&logo=github)](https://github.com/tongchengbin/xmap/releases)
-[![License](https://img.shields.io/github/license/tongchengbin/xmap?style=for-the-badge)](LICENSE)
-[![Build Status](https://img.shields.io/github/actions/workflow/status/tongchengbin/xmap/build.yml?style=for-the-badge&logo=github-actions)](https://github.com/tongchengbin/xmap/actions)
+[![Release](https://img.shields.io/github/v/release/hexbay/xmap?style=for-the-badge&logo=github)](https://github.com/hexbay/xmap/releases)
+[![License](https://img.shields.io/github/license/hexbay/xmap?style=for-the-badge)](LICENSE)
+[![Build Status](https://img.shields.io/github/actions/workflow/status/hexbay/xmap/build.yml?style=for-the-badge&logo=github-actions)](https://github.com/hexbay/xmap/actions)
 
-[🇨🇳 中文](README.md) • [🇺🇸 English](README_EN.md) • [📖 文档](https://github.com/tongchengbin/xmap/wiki) • [🚀 快速开始](#-快速开始)
+[🇨🇳 中文](README.md) • [🇺🇸 English](README_EN.md) • [📖 文档](https://github.com/hexbay/xmap/wiki) • [🚀 快速开始](#-快速开始)
 
 ---
 
@@ -58,10 +58,10 @@ XMap 是一个现代化的网络服务指纹识别工具，专为安全研究人
 
 ```bash
 # 安装最新版本
-go install github.com/tongchengbin/xmap@latest
+go install github.com/hexbay/xmap@latest
 
 # 安装指定版本
-go install github.com/tongchengbin/xmap@v0.1.0
+go install github.com/hexbay/xmap@v0.1.0
 ```
 
 </details>
@@ -69,17 +69,17 @@ go install github.com/tongchengbin/xmap@v0.1.0
 <details>
 <summary><b>📥 方式2: 下载预编译二进制文件</b></summary>
 
-访问 [Releases 页面](https://github.com/tongchengbin/xmap/releases) 下载适合你系统的版本：
+访问 [Releases 页面](https://github.com/hexbay/xmap/releases) 下载适合你系统的版本：
 
 **Linux:**
 ```bash
 # AMD64
-wget https://github.com/tongchengbin/xmap/releases/latest/download/xmap-linux-amd64.tar.gz
+wget https://github.com/hexbay/xmap/releases/latest/download/xmap-linux-amd64.tar.gz
 tar -xzf xmap-linux-amd64.tar.gz
 sudo mv xmap-linux-amd64 /usr/local/bin/xmap
 
 # ARM64  
-wget https://github.com/tongchengbin/xmap/releases/latest/download/xmap-linux-arm64.tar.gz
+wget https://github.com/hexbay/xmap/releases/latest/download/xmap-linux-arm64.tar.gz
 tar -xzf xmap-linux-arm64.tar.gz
 sudo mv xmap-linux-arm64 /usr/local/bin/xmap
 ```
@@ -87,12 +87,12 @@ sudo mv xmap-linux-arm64 /usr/local/bin/xmap
 **macOS:**
 ```bash
 # Intel Mac
-wget https://github.com/tongchengbin/xmap/releases/latest/download/xmap-darwin-amd64.tar.gz
+wget https://github.com/hexbay/xmap/releases/latest/download/xmap-darwin-amd64.tar.gz
 tar -xzf xmap-darwin-amd64.tar.gz
 sudo mv xmap-darwin-amd64 /usr/local/bin/xmap
 
 # Apple Silicon Mac
-wget https://github.com/tongchengbin/xmap/releases/latest/download/xmap-darwin-arm64.tar.gz
+wget https://github.com/hexbay/xmap/releases/latest/download/xmap-darwin-arm64.tar.gz
 tar -xzf xmap-darwin-arm64.tar.gz
 sudo mv xmap-darwin-arm64 /usr/local/bin/xmap
 ```
@@ -100,7 +100,7 @@ sudo mv xmap-darwin-arm64 /usr/local/bin/xmap
 **Windows:**
 ```powershell
 # 下载并解压到 PATH 目录
-# https://github.com/tongchengbin/xmap/releases/latest/download/xmap-windows-amd64.zip
+# https://github.com/hexbay/xmap/releases/latest/download/xmap-windows-amd64.zip
 ```
 
 </details>
@@ -110,7 +110,7 @@ sudo mv xmap-darwin-arm64 /usr/local/bin/xmap
 
 ```bash
 # 克隆仓库
-git clone https://github.com/tongchengbin/xmap.git
+git clone https://github.com/hexbay/xmap.git
 cd xmap
 
 # 安装依赖
@@ -130,13 +130,13 @@ go build -ldflags="-s -w" -o xmap .
 
 ```bash
 # 拉取镜像
-docker pull tongchengbin/xmap:latest
+docker pull hexbay/xmap:latest
 
 # 运行
-docker run --rm tongchengbin/xmap:latest -h
+docker run --rm hexbay/xmap:latest -h
 
 # 扫描示例
-docker run --rm tongchengbin/xmap:latest -t example.com
+docker run --rm hexbay/xmap:latest -t example.com
 ```
 
 </details>
@@ -225,8 +225,8 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/tongchengbin/xmap/pkg/api"
-	"github.com/tongchengbin/xmap/pkg/types"
+	"github.com/hexbay/xmap/pkg/api"
+	"github.com/hexbay/xmap/pkg/types"
 )
 
 func main() {
@@ -286,9 +286,9 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/tongchengbin/xmap/pkg/api"
-	"github.com/tongchengbin/xmap/pkg/input"
-	"github.com/tongchengbin/xmap/pkg/types"
+	"github.com/hexbay/xmap/pkg/api"
+	"github.com/hexbay/xmap/pkg/input"
+	"github.com/hexbay/xmap/pkg/types"
 )
 
 func main() {
@@ -449,13 +449,13 @@ graph TB
 ## 📚 相关资源
 
 ### 📖 文档
-- [📘 使用指南](https://github.com/tongchengbin/xmap/wiki)
-- [🔧 API文档](https://pkg.go.dev/github.com/tongchengbin/xmap)
-- [❓ 常见问题](https://github.com/tongchengbin/xmap/wiki/FAQ)
+- [📘 使用指南](https://github.com/hexbay/xmap/wiki)
+- [🔧 API文档](https://pkg.go.dev/github.com/hexbay/xmap)
+- [❓ 常见问题](https://github.com/hexbay/xmap/wiki/FAQ)
 
 ### 🛠️ 相关项目
-- [🔍 finger-rules](https://github.com/tongchengbin/finger-rules) - 服务指纹规则库
-- [🌐 appfinger](https://github.com/tongchengbin/appfinger) - Web应用指纹识别
+- [🔍 finger-rules](https://github.com/hexbay/finger-rules) - 服务指纹规则库
+- [🌐 appfinger](https://github.com/hexbay/appfinger) - Web应用指纹识别
 - [📊 nuclei](https://github.com/projectdiscovery/nuclei) - 漏洞扫描器
 
 ## 🤝 参与贡献
@@ -463,8 +463,8 @@ graph TB
 我们欢迎各种形式的贡献！
 
 ### 🎯 贡献方式
-- 🐛 **报告Bug** - [提交Issue](https://github.com/tongchengbin/xmap/issues/new)
-- 💡 **功能建议** - [功能请求](https://github.com/tongchengbin/xmap/issues/new)
+- 🐛 **报告Bug** - [提交Issue](https://github.com/hexbay/xmap/issues/new)
+- 💡 **功能建议** - [功能请求](https://github.com/hexbay/xmap/issues/new)
 - 📝 **改进文档** - 提交PR改进文档
 - 🔧 **代码贡献** - Fork项目并提交PR
 
@@ -496,7 +496,7 @@ git push origin feature/your-feature
 感谢以下开源项目和贡献者：
 
 - [🔍 ProjectDiscovery](https://github.com/projectdiscovery) - 提供优秀的安全工具生态
-- [🌐 appfinger](https://github.com/tongchengbin/appfinger) - Web应用指纹识别
+- [🌐 appfinger](https://github.com/hexbay/appfinger) - Web应用指纹识别
 - [📊 goflags](https://github.com/projectdiscovery/goflags) - 命令行参数解析
 - [📝 gologger](https://github.com/projectdiscovery/gologger) - 日志记录功能
 
@@ -506,7 +506,7 @@ git push origin feature/your-feature
 
 **⭐ 如果这个项目对你有帮助，请给个Star支持一下！**
 
-[🏠 主页](https://github.com/tongchengbin/xmap) • [📖 文档](https://github.com/tongchengbin/xmap/wiki) • [🐛 反馈](https://github.com/tongchengbin/xmap/issues) • [💬 讨论](https://github.com/tongchengbin/xmap/discussions)
+[🏠 主页](https://github.com/hexbay/xmap) • [📖 文档](https://github.com/hexbay/xmap/wiki) • [🐛 反馈](https://github.com/hexbay/xmap/issues) • [💬 讨论](https://github.com/hexbay/xmap/discussions)
 
 </div>
 

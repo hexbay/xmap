@@ -3,7 +3,7 @@ package runner
 import (
 	"fmt"
 	"github.com/projectdiscovery/goflags"
-	"github.com/tongchengbin/xmap/pkg/types"
+	"github.com/hexbay/xmap/pkg/types"
 	"os"
 )
 

@@ -3,7 +3,7 @@ package input
 import (
 	"errors"
 	"fmt"
-	"github.com/tongchengbin/xmap/pkg/types"
+	"github.com/hexbay/xmap/pkg/types"
 	"os"
 	"path/filepath"
 )

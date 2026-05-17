@@ -11,9 +11,9 @@ import (
 
 	"github.com/projectdiscovery/fastdialer/fastdialer"
 	"github.com/projectdiscovery/gologger"
-	"github.com/tongchengbin/xmap/pkg/probe"
-	"github.com/tongchengbin/xmap/pkg/types"
-	"github.com/tongchengbin/xmap/pkg/utils"
+	"github.com/hexbay/xmap/pkg/probe"
+	"github.com/hexbay/xmap/pkg/types"
+	"github.com/hexbay/xmap/pkg/utils"
 )
 
 // ServiceScanner 默认扫描器实现

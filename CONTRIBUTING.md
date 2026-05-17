@@ -34,7 +34,7 @@ By participating in this project, you agree to abide by our [Code of Conduct](CO
 ## Development Setup
 
 1. Ensure you have Go 1.21 or later installed
-2. Clone the repository: `git clone https://github.com/tongchengbin/xmap.git`
+2. Clone the repository: `git clone https://github.com/hexbay/xmap.git`
 3. Install dependencies: `go mod download`
 4. Build the project: `go build -o xmap main.go`
 

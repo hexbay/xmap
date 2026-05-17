@@ -5,9 +5,9 @@
 
 <p align="center">
   <a href="https://golang.org/"><img src="https://img.shields.io/badge/Made%20with-Go-1f425f.svg" alt="made-with-Go"></a>
-  <a href="https://github.com/tongchengbin/xmap/releases"><img src="https://img.shields.io/github/release/tongchengbin/xmap.svg" alt="Release"></a>
-  <a href="https://github.com/tongchengbin/xmap/issues"><img src="https://img.shields.io/github/issues/tongchengbin/xmap.svg" alt="Issues"></a>
-  <a href="https://github.com/tongchengbin/xmap/blob/master/LICENSE"><img src="https://img.shields.io/github/license/tongchengbin/xmap.svg" alt="License"></a>
+  <a href="https://github.com/hexbay/xmap/releases"><img src="https://img.shields.io/github/release/hexbay/xmap.svg" alt="Release"></a>
+  <a href="https://github.com/hexbay/xmap/issues"><img src="https://img.shields.io/github/issues/hexbay/xmap.svg" alt="Issues"></a>
+  <a href="https://github.com/hexbay/xmap/blob/master/LICENSE"><img src="https://img.shields.io/github/license/hexbay/xmap.svg" alt="License"></a>
 </p>
 
 [中文文档](README.md) | [English](README_EN.md)
@@ -39,14 +39,14 @@ XMap is a high-performance distributed network service fingerprinting framework 
 
 ```bash
 # Install the latest version directly
-go install github.com/tongchengbin/xmap@latest
+go install github.com/hexbay/xmap@latest
 ```
 
 #### From source code
 
 ```bash
 # Clone the repository
-git clone https://github.com/tongchengbin/xmap.git
+git clone https://github.com/hexbay/xmap.git
 cd xmap
 
 # Install dependencies
@@ -110,8 +110,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/tongchengbin/xmap/pkg/api"
-	"github.com/tongchengbin/xmap/pkg/types"
+	"github.com/hexbay/xmap/pkg/api"
+	"github.com/hexbay/xmap/pkg/types"
 )
 
 func main() {
@@ -287,7 +287,7 @@ XMap is licensed under the [MIT License](LICENSE).
 
 XMap is based on the following open-source projects and resources:
 
-- [rule](https://github.com/tongchengbin/finger-rules) - Provides service fingerprint identification rules
-- [appfinger](https://github.com/tongchengbin/appfinger) - Provides Web application fingerprint identification capabilities
+- [rule](https://github.com/hexbay/finger-rules) - Provides service fingerprint identification rules
+- [appfinger](https://github.com/hexbay/appfinger) - Provides Web application fingerprint identification capabilities
 - [goflags](https://github.com/projectdiscovery/goflags) - Provides command-line argument parsing
 - [gologger](https://github.com/projectdiscovery/gologger) - Provides logging functionality

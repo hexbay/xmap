@@ -3,10 +3,10 @@ package web
 import (
 	"context"
 	"fmt"
-	"github.com/tongchengbin/appfinger/pkg/crawl"
-	"github.com/tongchengbin/appfinger/pkg/rule"
-	"github.com/tongchengbin/appfinger/pkg/runner"
-	"github.com/tongchengbin/xmap/pkg/types"
+	"github.com/hexbay/appfinger/pkg/crawl"
+	"github.com/hexbay/appfinger/pkg/rule"
+	"github.com/hexbay/appfinger/pkg/runner"
+	"github.com/hexbay/xmap/pkg/types"
 )
 
 // Scanner Web应用指纹扫描器

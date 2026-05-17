@@ -5,11 +5,11 @@ import (
 	"fmt"
 	"github.com/projectdiscovery/gologger"
 	"github.com/projectdiscovery/gologger/levels"
-	"github.com/tongchengbin/xmap/pkg/types"
+	"github.com/hexbay/xmap/pkg/types"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/tongchengbin/xmap/pkg/utils"
+	"github.com/hexbay/xmap/pkg/utils"
 )
 
 func createTestScanner() *ServiceScanner {
