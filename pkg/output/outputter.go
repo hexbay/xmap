@@ -2,6 +2,7 @@ package output
 
 import (
 	"bufio"
+	"encoding/csv"
 	"fmt"
 	"os"
 	"strings"
@@ -70,26 +71,26 @@ func (o *ConsoleOuter) Output(results *types.ScanResult) error {
 		}
 	}
 	componentsStr := strings.Join(componentsList, aurora.Gray(12, " │ ").String())
-	
+
 	// 构建目标URL
 	targetURL := fmt.Sprintf("%s://%s:%d", results.Service, results.Target.Host, results.Target.Port)
-	
+
 	// 构建输出字符串
 	var outputParts []string
-	
+
 	// URL部分 - 使用亮绿色
 	outputParts = append(outputParts, aurora.BrightGreen(targetURL).String())
-	
+
 	// 组件信息 - 如果有的话
 	if componentsStr != "" {
 		outputParts = append(outputParts, componentsStr)
 	}
-	
+
 	// 标题 - 使用白色加粗
 	if title, ok := results.Banner["title"]; ok {
 		outputParts = append(outputParts, aurora.Bold(aurora.White(fmt.Sprintf("[%s]", title))).String())
 	}
-	
+
 	// 状态码 - 根据状态码使用不同颜色并添加描述
 	if statusCode, ok := results.Banner["status_code"]; ok {
 		statusInt, _ := statusCode.(int)
@@ -109,7 +110,7 @@ func (o *ConsoleOuter) Output(results *types.ScanResult) error {
 		}
 		outputParts = append(outputParts, statusStr)
 	}
-	
+
 	// 响应长度 - 使用青色,并格式化为易读的大小
 	if bodyLength, ok := results.Banner["body_length"]; ok {
 		lengthInt, _ := bodyLength.(int)
@@ -122,11 +123,11 @@ func (o *ConsoleOuter) Output(results *types.ScanResult) error {
 			outputParts = append(outputParts, aurora.Cyan(fmt.Sprintf("[%s]", sizeStr)).String())
 		}
 	}
-	
+
 	// 耗时 - 使用蓝色
 	durationStr := formatDuration(results.Duration)
 	outputParts = append(outputParts, aurora.Blue(fmt.Sprintf("[%s]", durationStr)).String())
-	
+
 	outputStr := strings.Join(outputParts, " ")
 	// 如果有输出文件，写入文件
 	if o.file != nil && o.writer != nil {
@@ -134,7 +135,7 @@ func (o *ConsoleOuter) Output(results *types.ScanResult) error {
 		defer o.mutex.Unlock()
 
 		// 写入到缓冲区
-		_, err := o.writer.WriteString(outputStr)
+		_, err := o.writer.WriteString(outputStr + "\n")
 		if err != nil {
 			return err
 		}
@@ -146,7 +147,7 @@ func (o *ConsoleOuter) Output(results *types.ScanResult) error {
 		}
 	} else {
 		// 输出到控制台
-		fmt.Print(outputStr)
+		fmt.Println(outputStr)
 	}
 
 	return nil
@@ -260,43 +261,81 @@ func (o *JSONOuter) Close() error {
 // CSVOuter CSV输出实现
 type CSVOuter struct {
 	OutputFile string
+	file       *os.File
+	writer     *csv.Writer
+	mutex      *sync.Mutex
+	wroteHead  bool
 }
 
 // NewCSVOuter 创建一个新的CSV输出器
 func NewCSVOuter(outputFile string) *CSVOuter {
-	return &CSVOuter{
+	outer := &CSVOuter{
 		OutputFile: outputFile,
+		mutex:      &sync.Mutex{},
 	}
+
+	if outputFile != "" {
+		file, err := os.OpenFile(outputFile, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
+		if err == nil {
+			outer.file = file
+			outer.writer = csv.NewWriter(file)
+		} else {
+			gologger.Error().Msgf("Could not create output file '%s': %s", outputFile, err)
+		}
+	} else {
+		outer.writer = csv.NewWriter(os.Stdout)
+	}
+
+	return outer
 }
 
 // Output 实现Outer接口
 func (o *CSVOuter) Output(results *types.ScanResult) error {
-	// 如果指定了输出文件，则输出到文件
-	if o.OutputFile != "" {
-		// 使用 O_APPEND 模式打开文件，如果文件不存在则创建
-		file, err := os.OpenFile(o.OutputFile, os.O_CREATE|os.O_WRONLY, 0644)
-		if err != nil {
+	o.mutex.Lock()
+	defer o.mutex.Unlock()
+
+	if o.writer == nil {
+		return fmt.Errorf("csv writer is not initialized")
+	}
+	if !o.wroteHead {
+		if err := o.writer.Write([]string{"IP", "Port", "Protocol", "Service", "MatchedProbe", "Components", "Duration"}); err != nil {
 			return err
 		}
-		defer file.Close()
-
-		// 重定向标准输出到文件
-		oldStdout := os.Stdout
-		os.Stdout = file
-		o.printCSV(results)
-		os.Stdout = oldStdout
-		return nil
+		o.wroteHead = true
 	}
-
-	// 否则输出到控制台
-	o.printCSV(results)
-	return nil
+	if err := o.writer.Write([]string{
+		results.IP,
+		fmt.Sprintf("%d", results.Port),
+		results.Protocol,
+		results.Service,
+		results.MatchedProbe,
+		ComponentsToString(results.Components),
+		fmt.Sprintf("%.6f", results.Duration),
+	}); err != nil {
+		return err
+	}
+	o.writer.Flush()
+	return o.writer.Error()
 }
 
-// printCSV 打印CSV格式结果
-func (o *CSVOuter) printCSV(results *types.ScanResult) {
-	// 打印CSV头
-	fmt.Println("IP,Port,Protocol,Service,MatchedProbe,MatchedService,Duration")
+// Close 关闭输出器
+func (o *CSVOuter) Close() error {
+	o.mutex.Lock()
+	defer o.mutex.Unlock()
+
+	if o.writer != nil {
+		o.writer.Flush()
+		if err := o.writer.Error(); err != nil {
+			return err
+		}
+	}
+	if o.file != nil {
+		err := o.file.Close()
+		o.file = nil
+		o.writer = nil
+		return err
+	}
+	return nil
 }
 
 // truncateString 截断字符串
@@ -334,7 +373,7 @@ func formatSize(bytes int) string {
 		MB = 1024 * KB
 		GB = 1024 * MB
 	)
-	
+
 	switch {
 	case bytes >= GB:
 		return fmt.Sprintf("%.2fGB", float64(bytes)/float64(GB))
@@ -432,35 +471,35 @@ func formatComponent(component map[string]interface{}) string {
 	if !hasName {
 		return ""
 	}
-	
+
 	nameStr := fmt.Sprintf("%v", name)
-	
+
 	// 特殊处理版本信息
 	if version, hasVersion := component["version"]; hasVersion {
 		versionStr := fmt.Sprintf("%v", version)
 		// 组件名用亮青色,分隔符用灰色,版本号用亮黄色并加粗
-		return fmt.Sprintf("%s%s%s", 
+		return fmt.Sprintf("%s%s%s",
 			aurora.BrightCyan(nameStr).String(),
 			aurora.Gray(12, "/").String(),
 			aurora.Bold(aurora.BrightYellow(versionStr)).String())
 	}
-	
+
 	// 收集其他属性
 	var attrs []string
 	for k, v := range component {
 		if k != "name" && k != "version" {
 			// 属性名用灰色,值用白色
-			attrs = append(attrs, fmt.Sprintf("%s=%s", 
+			attrs = append(attrs, fmt.Sprintf("%s=%s",
 				aurora.Gray(12, k).String(),
 				aurora.White(fmt.Sprintf("%v", v)).String()))
 		}
 	}
-	
+
 	// 组合结果
 	result := aurora.BrightCyan(nameStr).String()
 	if len(attrs) > 0 {
 		result += " " + strings.Join(attrs, " ")
 	}
-	
+
 	return result
 }

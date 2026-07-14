@@ -3,13 +3,13 @@ package runner
 import (
 	"context"
 	"fmt"
-	"github.com/projectdiscovery/gologger"
-	"github.com/projectdiscovery/gologger/levels"
 	"github.com/hexbay/xmap/pkg/api"
 	"github.com/hexbay/xmap/pkg/input"
 	"github.com/hexbay/xmap/pkg/output"
 	"github.com/hexbay/xmap/pkg/types"
 	"github.com/hexbay/xmap/pkg/utils"
+	"github.com/projectdiscovery/gologger"
+	"github.com/projectdiscovery/gologger/levels"
 	"os"
 	"os/signal"
 )
@@ -72,6 +72,7 @@ func (r *Runner) RunEnumeration() error {
 	if err != nil {
 		return err
 	}
+	defer outputHandler.Close()
 	// 创建进度跟踪器
 	var progressTracker *utils.Progress
 	if !r.options.Silent && !r.options.NoProgress {
@@ -133,6 +134,17 @@ func (h *OutputHandler) HandleResult(result *types.ScanResult) {
 		fileErr := h.fileOutput.Output(result)
 		if fileErr != nil {
 			gologger.Error().Msgf("文件输出失败: %v", fileErr)
+		}
+	}
+}
+
+// Close flushes and closes output resources that need explicit cleanup.
+func (h *OutputHandler) Close() {
+	for _, outer := range []output.Outer{h.consoleOutput, h.fileOutput} {
+		if closer, ok := outer.(interface{ Close() error }); ok {
+			if err := closer.Close(); err != nil {
+				gologger.Error().Msgf("关闭输出失败: %v", err)
+			}
 		}
 	}
 }
