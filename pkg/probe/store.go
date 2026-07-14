@@ -302,12 +302,17 @@ func GetStoreWithOptions(filename string, versionIntensity int, reload bool) (*S
 		}
 	}
 	storeCacheMutex.RUnlock()
-	probeFilePath := GetDefaultProbeFilePath()
+	probeFilePath := filename
+	if probeFilePath == "" {
+		probeFilePath = GetDefaultProbeFilePath()
+	}
 	store := NewProbeStore(WithFileName(probeFilePath), WithVersionIntensity(versionIntensity))
 	if err := store.Load(); err != nil {
 		return nil, err
 	}
+	storeCacheMutex.Lock()
 	storeCache[cacheKey] = store
+	storeCacheMutex.Unlock()
 	return store, nil
 }
 
