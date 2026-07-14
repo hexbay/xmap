@@ -9,11 +9,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/projectdiscovery/fastdialer/fastdialer"
-	"github.com/projectdiscovery/gologger"
 	"github.com/hexbay/xmap/pkg/probe"
 	"github.com/hexbay/xmap/pkg/types"
 	"github.com/hexbay/xmap/pkg/utils"
+	"github.com/projectdiscovery/fastdialer/fastdialer"
+	"github.com/projectdiscovery/gologger"
 )
 
 // ServiceScanner 默认扫描器实现
@@ -327,7 +327,11 @@ func (s *ServiceScanner) executeUDPProbe(ctx context.Context, target *types.Scan
 
 // createConnection 创建网络连接
 func (s *ServiceScanner) createConnection(ctx context.Context, target *types.ScanTarget, useSSL bool, timeout time.Duration) (net.Conn, error) {
-	address := fmt.Sprintf("%s:%d", target.Host, target.Port)
+	host := target.Host
+	if host == "" {
+		host = target.IP
+	}
+	address := fmt.Sprintf("%s:%d", host, target.Port)
 	// 使用fastdialer处理连接
 	var conn net.Conn
 	var err error
