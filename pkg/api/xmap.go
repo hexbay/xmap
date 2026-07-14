@@ -10,7 +10,6 @@ import (
 
 	"github.com/hexbay/xmap/pkg/input"
 	"github.com/hexbay/xmap/pkg/scanner"
-	"github.com/remeh/sizedwaitgroup"
 
 	"github.com/hexbay/xmap/pkg/types"
 	"github.com/hexbay/xmap/pkg/web"
@@ -34,6 +33,34 @@ type XMap struct {
 	initOnce sync.Once
 }
 
+type semaphoreLimiter struct {
+	sem chan struct{}
+}
+
+// NewLimiter creates a target-level concurrency limiter.
+func NewLimiter(limit int) types.Limiter {
+	if limit <= 0 {
+		limit = 10
+	}
+	return &semaphoreLimiter{sem: make(chan struct{}, limit)}
+}
+
+func (l *semaphoreLimiter) Acquire(ctx context.Context) error {
+	select {
+	case l.sem <- struct{}{}:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+func (l *semaphoreLimiter) Release() {
+	select {
+	case <-l.sem:
+	default:
+	}
+}
+
 // New 创建新的XMap实例
 func New(options *types.Options) (*XMap, error) {
 	// 创建XMap实例
@@ -43,6 +70,15 @@ func New(options *types.Options) (*XMap, error) {
 	// 初始化扫描引擎
 	err := x.init()
 	return x, err
+}
+
+// NewWithLimiter creates a new XMap instance with a shared concurrency limiter.
+func NewWithLimiter(options *types.Options, limiter types.Limiter) (*XMap, error) {
+	if options == nil {
+		options = types.DefaultOptions()
+	}
+	options.Limiter = limiter
+	return New(options)
 }
 
 // init 初始化XMap扫描引擎
@@ -256,22 +292,36 @@ func (x *XMap) ParseTargetsString(targetsStr string) ([]*types.ScanTarget, error
 // ScanWithCallback 使用回调函数扫描多个目标
 // 每完成一个目标的扫描就调用回调函数，适用于需要实时处理结果的场景
 func (x *XMap) ScanWithCallback(ctx context.Context, targets input.Provider, callback func(*types.ScanResult)) error {
+	return x.ScanWithCallbackWithLimiter(ctx, targets, callback, x.options.Limiter)
+}
+
+// ScanWithCallbackWithLimiter 使用可共享的限流器扫描多个目标。
+// limiter 控制 target-level concurrency；每个 target 调用 Scan 前 acquire，完成后 release。
+func (x *XMap) ScanWithCallbackWithLimiter(ctx context.Context, targets input.Provider, callback func(*types.ScanResult), limiter types.Limiter) error {
 	// 设置默认并行数
 	if x.options.Threads <= 0 {
 		x.options.Threads = 10
 	}
+	if limiter == nil {
+		limiter = NewLimiter(x.options.Threads)
+	}
 	// 创建上下文，支持取消
 	scanCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	// 启动扫描协程池
-	wg := sizedwaitgroup.New(x.options.Threads)
+	var wg sync.WaitGroup
 	// 处理每个目标
 	targets.Scan(func(target *types.ScanTarget) bool {
+		if err := limiter.Acquire(scanCtx); err != nil {
+			return false
+		}
 		// 添加到等待组
-		wg.Add()
+		wg.Add(1)
 		// 为每个目标启动一个goroutine
 		go func(target *types.ScanTarget) {
-			defer wg.Done()
+			defer func() {
+				limiter.Release()
+				wg.Done()
+			}()
 			// 检查上下文是否已取消
 			if scanCtx.Err() != nil {
 				x.handleScanError(callback, target, scanCtx.Err())
@@ -294,7 +344,7 @@ func (x *XMap) ScanWithCallback(ctx context.Context, targets input.Provider, cal
 
 	// 等待所有扫描完成
 	wg.Wait()
-	return nil
+	return scanCtx.Err()
 }
 
 // handleScanError 处理扫描错误

@@ -1,8 +1,16 @@
 package types
 
 import (
+	"context"
+
 	"github.com/projectdiscovery/goflags"
 )
+
+// Limiter controls target-level scan concurrency.
+type Limiter interface {
+	Acquire(ctx context.Context) error
+	Release()
+}
 
 // Options 包含XMap全局初始化选项
 type Options struct {
@@ -18,6 +26,7 @@ type Options struct {
 	Retries          int
 	HttpRetry        int
 	Threads          int
+	Limiter          Limiter
 	FastMode         bool
 	UseAllProbes     bool
 	NmapProneName    string

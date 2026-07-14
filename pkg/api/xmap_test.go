@@ -4,10 +4,13 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"github.com/hexbay/xmap/pkg/input"
 	"github.com/hexbay/xmap/testutils"
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -428,4 +431,90 @@ func TestParseCertificateMessage(t *testing.T) {
 	result, err := xmap.Scan(context.Background(), types.NewTarget("pc.test.pinbayun.com:443"))
 	assert.Nil(t, err)
 	println(result.Certificate)
+}
+
+type blockingLimiter struct {
+	acquired chan struct{}
+	released chan struct{}
+}
+
+func (l *blockingLimiter) Acquire(ctx context.Context) error {
+	select {
+	case l.acquired <- struct{}{}:
+	default:
+	}
+	return nil
+}
+
+func (l *blockingLimiter) Release() {
+	close(l.released)
+}
+
+func TestScanWithCallbackWithLimiterSharesTargetConcurrency(t *testing.T) {
+	var inFlight int32
+	var maxInFlight int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		current := atomic.AddInt32(&inFlight, 1)
+		for {
+			max := atomic.LoadInt32(&maxInFlight)
+			if current <= max || atomic.CompareAndSwapInt32(&maxInFlight, max, current) {
+				break
+			}
+		}
+		time.Sleep(100 * time.Millisecond)
+		atomic.AddInt32(&inFlight, -1)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	limiter := NewLimiter(2)
+	xmapInstance, err := NewWithLimiter(types.DefaultOptions(), limiter)
+	assert.NoError(t, err)
+
+	providers := make([]input.Provider, 4)
+	for i := range providers {
+		providers[i] = input.FromSliceString([]string{server.URL, server.URL, server.URL})
+	}
+
+	var wg sync.WaitGroup
+	for _, provider := range providers {
+		wg.Add(1)
+		go func(provider input.Provider) {
+			defer wg.Done()
+			err := xmapInstance.ScanWithCallback(context.Background(), provider, func(result *types.ScanResult) {
+				assert.NotNil(t, result)
+			})
+			assert.NoError(t, err)
+		}(provider)
+	}
+	wg.Wait()
+
+	assert.LessOrEqual(t, atomic.LoadInt32(&maxInFlight), int32(2))
+}
+
+func TestScanWithCallbackWithLimiterReleasesTokenOnCanceledScan(t *testing.T) {
+	limiter := &blockingLimiter{
+		acquired: make(chan struct{}, 1),
+		released: make(chan struct{}),
+	}
+	xmapInstance, err := NewWithLimiter(types.DefaultOptions(), limiter)
+	assert.NoError(t, err)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	provider := input.FromSliceString([]string{"127.0.0.1:1"})
+
+	err = xmapInstance.ScanWithCallback(ctx, provider, nil)
+	assert.Error(t, err)
+
+	select {
+	case <-limiter.acquired:
+	case <-time.After(time.Second):
+		t.Fatal("expected limiter acquire")
+	}
+	select {
+	case <-limiter.released:
+	case <-time.After(time.Second):
+		t.Fatal("expected limiter release after canceled scan")
+	}
 }
