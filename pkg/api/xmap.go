@@ -10,13 +10,13 @@ import (
 
 	"github.com/hexbay/appfinger/pkg/external/customrules"
 
-	"github.com/remeh/sizedwaitgroup"
 	"github.com/hexbay/xmap/pkg/input"
 	"github.com/hexbay/xmap/pkg/scanner"
+	"github.com/remeh/sizedwaitgroup"
 
-	"github.com/projectdiscovery/gologger"
 	"github.com/hexbay/xmap/pkg/types"
 	"github.com/hexbay/xmap/pkg/web"
+	"github.com/projectdiscovery/gologger"
 )
 
 // ScannerConfig 扫描器配置接口
@@ -84,7 +84,7 @@ func (x *XMap) Scan(ctx context.Context, target *types.ScanTarget) (*types.ScanR
 	}
 	result, err := x.serviceScanner.ScanWithContext(ctx, target)
 	if err != nil && result != nil && result.Service == "" {
-		return nil, err
+		return result, err
 	}
 	if result == nil {
 		return nil, err
