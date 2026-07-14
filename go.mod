@@ -6,13 +6,13 @@ toolchain go1.23.7
 
 require (
 	github.com/dlclark/regexp2 v1.11.4
+	github.com/hexbay/appfinger v1.6.17
 	github.com/logrusorgru/aurora v2.0.3+incompatible
 	github.com/projectdiscovery/fastdialer v0.4.0
 	github.com/projectdiscovery/goflags v0.1.74
 	github.com/projectdiscovery/gologger v1.1.46
 	github.com/remeh/sizedwaitgroup v1.0.0
 	github.com/stretchr/testify v1.10.0
-	github.com/hexbay/appfinger v1.6.16
 )
 
 require (

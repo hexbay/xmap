@@ -3,7 +3,7 @@ package web
 import (
 	"context"
 	"fmt"
-	"github.com/hexbay/appfinger/pkg/crawl"
+	"github.com/hexbay/appfinger/pkg/fetch"
 	"github.com/hexbay/appfinger/pkg/rule"
 	"github.com/hexbay/appfinger/pkg/runner"
 	"github.com/hexbay/xmap/pkg/types"
@@ -12,8 +12,7 @@ import (
 // Scanner Web应用指纹扫描器
 type Scanner struct {
 	options *types.Options
-	// 创建爬虫
-	crawler *crawl.Crawler
+	fetcher *fetch.Fetcher
 }
 
 // NewScanner 创建新的Web扫描器
@@ -23,15 +22,15 @@ func NewScanner(options *types.Options) (*Scanner, error) {
 	if !ruleManager.IsLoaded() {
 		return nil, fmt.Errorf("规则库未加载")
 	}
-	crawlerOptions := crawl.DefaultOption()
-	crawlerOptions.RetryMax = options.HttpRetry
-	crawlerOptions.Proxy = options.Proxy
-	crawlerOptions.DebugResp = options.DebugResponse
-	crawlerOptions.DisableIcon = options.DisableIcon
-	crawler := crawl.NewCrawler(crawlerOptions)
+	fetchOptions := fetch.DefaultOption()
+	fetchOptions.RetryMax = options.HttpRetry
+	fetchOptions.Proxy = options.Proxy
+	fetchOptions.DebugResp = options.DebugResponse
+	fetchOptions.DisableIcon = options.DisableIcon
+	fetcher := fetch.NewFetcher(fetchOptions)
 	scanner := &Scanner{
 		options: options,
-		crawler: crawler,
+		fetcher: fetcher,
 	}
 	// 创建默认选项
 	return scanner, nil
@@ -52,7 +51,7 @@ type ScanResult struct {
 	URL        string
 	Components map[string]map[string]string
 	Error      error
-	Banner     *crawl.Banner
+	Banner     *fetch.Banner
 }
 
 // ShouldScan 判断是否应该进行Web扫描
@@ -64,7 +63,7 @@ func ShouldScan(service string) bool {
 
 // ScanWithContext 带上下文的Web扫描
 func (s *Scanner) ScanWithContext(ctx context.Context, url string) (*ScanResult, error) {
-	sdk, err := runner.NewRunner(s.crawler, rule.GetRuleManager(), nil)
+	sdk, err := runner.NewRunner(s.fetcher, rule.GetRuleManager(), nil)
 	if err != nil {
 		return nil, fmt.Errorf("create Runner Error~")
 	}
