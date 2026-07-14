@@ -215,10 +215,6 @@ func (s *ServiceScanner) executeTCPProbe(ctx context.Context, target *types.Scan
 	timeoutCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	if s.options.DebugRequest {
-		gologger.Debug().Msgf("Sending TCP probe %s to %s", probe.Name, target.Host)
-	}
-
 	// 创建 TCP 连接
 	conn, err := s.createConnection(timeoutCtx, target, useSSL, timeout)
 	if err != nil {
@@ -230,6 +226,9 @@ func (s *ServiceScanner) executeTCPProbe(ctx context.Context, target *types.Scan
 
 	raw := replaceProbeRaw(probe.SendData, target)
 	_, err = conn.Write(raw)
+	if s.options.DebugRequest {
+		gologger.Print().Msgf("Dump TCP Request For %s probe %s\n%s", target.String(), probe.Name, formatProbeData(raw))
+	}
 	if useSSL {
 		gologger.Debug().Msgf("Send %s %d bytes to [ssl://%s:%d]", probe.Name, len(raw), target.Host, target.Port)
 	} else {
@@ -275,9 +274,6 @@ func (s *ServiceScanner) executeUDPProbe(ctx context.Context, target *types.Scan
 	timeout := time.Duration(s.options.Timeout) * time.Second
 	timeoutCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	if s.options.DebugRequest {
-		gologger.Debug().Msgf("Sending UDP probe %s to %s", probe.Name, target.String())
-	}
 	// 创建 UDP 连接（UDP 不支持 SSL/TLS）
 	conn, err := s.createConnection(timeoutCtx, target, false, timeout)
 	if err != nil {
@@ -302,6 +298,9 @@ func (s *ServiceScanner) executeUDPProbe(ctx context.Context, target *types.Scan
 	// 发送探针数据
 	raw := replaceProbeRaw(probe.SendData, target)
 	_, err = conn.Write(raw)
+	if s.options.DebugRequest {
+		gologger.Print().Msgf("Dump UDP Request For %s probe %s\n%s", target.String(), probe.Name, formatProbeData(raw))
+	}
 	gologger.Debug().Msgf("Sent %d bytes to [udp://%s:%d]", len(raw), target.Host, target.Port)
 
 	if err != nil {

@@ -25,6 +25,7 @@ func NewScanner(options *types.Options) (*Scanner, error) {
 	fetchOptions := fetch.DefaultOption()
 	fetchOptions.RetryMax = options.HttpRetry
 	fetchOptions.Proxy = options.Proxy
+	fetchOptions.DebugReq = options.DebugRequest
 	fetchOptions.DebugResp = options.DebugResponse
 	fetchOptions.DisableIcon = options.DisableIcon
 	fetcher := fetch.NewFetcher(fetchOptions)
