@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -29,6 +30,26 @@ func createXmap() *XMap {
 	return xmap
 }
 
+func fastTestOptions() *types.Options {
+	opts := types.DefaultOptions()
+	opts.Timeout = 1
+	opts.MaxTimeout = 3
+	return opts
+}
+
+func timeoutTestOptions() *types.Options {
+	opts := fastTestOptions()
+	opts.MaxTimeout = 2
+	return opts
+}
+
+func skipIntegration(t *testing.T) {
+	t.Helper()
+	if os.Getenv("XMAP_RUN_INTEGRATION") != "1" {
+		t.Skip("set XMAP_RUN_INTEGRATION=1 to run external network integration tests")
+	}
+}
+
 // TestProtocolDetection 测试协议检测功能
 func TestProtocolDetection(t *testing.T) {
 	// 创建测试用例
@@ -42,12 +63,13 @@ func TestProtocolDetection(t *testing.T) {
 			serverSetup: func() (*testutils.TestServer, error) {
 				// 创建SSH测试服务器
 				server := testutils.NewTestServer("tcp")
+				server.SetKeepAlive(false)
 
 				// 设置SSH响应
 				sshResponse := []byte("SSH-2.0-OpenSSH_8.2p1 Ubuntu-4ubuntu0.5\r\n")
 
 				// 添加请求-响应规则
-				server.AddRule(testutils.NewEmptyRequestMatcher(), testutils.NewStaticResponseHandler(sshResponse), 5)
+				server.AddRule(testutils.NewPrefixRequestMatcher([]byte("SSH-2.0-Client")), testutils.NewStaticResponseHandler(sshResponse), 5)
 
 				// 启动服务器
 				err := server.Start()
@@ -178,7 +200,7 @@ func TestProtocolDetection(t *testing.T) {
 	}
 
 	// 初始化XMap扫描器
-	xmapInstance, err := New(types.DefaultOptions())
+	xmapInstance, err := New(timeoutTestOptions())
 	assert.NoError(t, err)
 	assert.NotNil(t, xmapInstance, "初始化XMap实例失败")
 	// 运行测试用例
@@ -315,7 +337,7 @@ func TestSSHScan(t *testing.T) {
 	assert.NoError(t, err, "启动测试服务器失败")
 	defer server.Stop()
 	// 创建XMap实例
-	xmapInstance, err := New(types.DefaultOptions())
+	xmapInstance, err := New(fastTestOptions())
 	assert.NoError(t, err)
 	assert.NotNil(t, xmapInstance, "初始化XMap实例失败")
 	ctx := context.Background()
@@ -336,7 +358,7 @@ func TestHTTPScan(t *testing.T) {
 	defer server.Close()
 	gologger.DefaultLogger.SetMaxLevel(levels.LevelDebug)
 	// 创建XMap实例
-	xmapInstance, err := New(types.DefaultOptions())
+	xmapInstance, err := New(fastTestOptions())
 	assert.NoError(t, err)
 	assert.NotNil(t, xmapInstance, "初始化XMap实例失败")
 	ctx := context.Background()
@@ -351,25 +373,26 @@ func TestTimeoutScan(t *testing.T) {
 	gologger.DefaultLogger.SetMaxLevel(levels.LevelDebug)
 	server := testutils.NewTestServer("tcp")
 	server.AddRule(testutils.NewPrefixRequestMatcher([]byte("GET")), testutils.NewStaticResponseHandler([]byte("HTTP/1.1 200 OK\nServer: nginx/1.18.0\nContent-Type: text/html\n\n<html><body>Test</body></html>")), 5)
-	server.SetResponseDelay(10 * time.Second)
+	server.SetResponseDelay(1500 * time.Millisecond)
 	err := server.Start()
 	assert.NoError(t, err, "启动测试服务器失败")
 	defer server.Stop()
 
 	// 创建XMap实例
 	// 创建XMap实例
-	xmapInstance, err := New(types.DefaultOptions())
+	xmapInstance, err := New(fastTestOptions())
 	assert.NoError(t, err)
 	assert.NotNil(t, xmapInstance, "初始化XMap实例失败")
 	ctx := context.Background()
 	result, err := xmapInstance.Scan(ctx, types.NewTarget(server.GetAddress()))
 	assert.Error(t, err)
 	assert.NotNil(t, result)
-	assert.True(t, result.Duration > 10)
+	assert.True(t, result.Duration >= 1)
 	assert.Equal(t, result.Service, "")
 }
 
 func TestRemoteWaf(t *testing.T) {
+	skipIntegration(t)
 	// 创建XMap实例
 	gologger.DefaultLogger.SetMaxLevel(levels.LevelDebug)
 	// 创建XMap实例
@@ -405,6 +428,7 @@ func TestScanWithWaf(t *testing.T) {
 }
 
 func TestScanHttps(t *testing.T) {
+	skipIntegration(t)
 	// 创建XMap实例
 	gologger.DefaultLogger.SetMaxLevel(levels.LevelDebug)
 	// 创建XMap实例
@@ -426,6 +450,7 @@ func BenchmarkNewXmap(b *testing.B) {
 }
 
 func TestParseCertificateMessage(t *testing.T) {
+	skipIntegration(t)
 	// 测试证书解析
 	xmap := createXmap()
 	result, err := xmap.Scan(context.Background(), types.NewTarget("pc.test.pinbayun.com:443"))

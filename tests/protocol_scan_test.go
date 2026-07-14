@@ -15,7 +15,13 @@ import (
 )
 
 func CreateXmapInstance() *api.XMap {
+	return createXmapInstanceWithMaxTimeout(3)
+}
+
+func createXmapInstanceWithMaxTimeout(maxTimeout int) *api.XMap {
 	opt := types.DefaultOptions()
+	opt.Timeout = 1
+	opt.MaxTimeout = maxTimeout
 	opt.VersionIntensity = 9
 	//opt.DebugRequest = true
 	//opt.DebugResponse = true
@@ -56,7 +62,7 @@ func TestSSHScan(t *testing.T) {
 	fmt.Printf("SSH服务器已启动，地址: %s\n", server.GetAddress())
 	target := types.NewTarget(server.GetAddress())
 	ctx := context.Background()
-	xmap, err := api.New(types.DefaultOptions())
+	xmap := CreateXmapInstance()
 	assert.NoError(t, err, "创建XMap实例失败")
 	result, err := xmap.Scan(ctx, target)
 	assert.NoError(t, err, "扫描SSH服务失败")
@@ -96,7 +102,7 @@ func TestSMTPScan(t *testing.T) {
 	fmt.Printf("SMTP服务器已启动，地址: %s\n", server.GetAddress())
 	target := types.NewTarget(server.GetAddress())
 	ctx := context.Background()
-	xmap, err := api.New(types.DefaultOptions())
+	xmap := CreateXmapInstance()
 	assert.NoError(t, err, "创建XMap实例失败")
 	result, err := xmap.Scan(ctx, target)
 	assert.NoError(t, err, "扫描SMTP服务失败")
@@ -115,7 +121,7 @@ func TestPOP3Scan(t *testing.T) {
 	fmt.Printf("POP3服务器已启动，地址: %s\n", server.GetAddress())
 	target := types.NewTarget(server.GetAddress())
 	ctx := context.Background()
-	xmap, err := api.New(types.DefaultOptions())
+	xmap := CreateXmapInstance()
 	assert.NoError(t, err, "创建XMap实例失败")
 	result, err := xmap.Scan(ctx, target)
 	assert.NoError(t, err, "扫描POP3服务失败")
@@ -189,7 +195,7 @@ func TestRedisScan(t *testing.T) {
 	fmt.Printf("Redis服务器已启动，地址: %s\n", server.GetAddress())
 	target := types.NewTarget(server.GetAddress())
 	ctx := context.Background()
-	xmap := CreateXmapInstance()
+	xmap := createXmapInstanceWithMaxTimeout(8)
 	assert.NoError(t, err, "创建XMap实例失败")
 	result, err := xmap.Scan(ctx, target)
 	assert.NoError(t, err, "扫描Redis服务失败")

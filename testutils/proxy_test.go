@@ -199,6 +199,7 @@ func TestProxyTimeout(t *testing.T) {
 	// 创建XMap实例，使用短超时时间
 	options := types.DefaultOptions()
 	options.Timeout = 1 // 设置1秒超时，小于服务器响应延迟
+	options.MaxTimeout = 2
 	options.Retries = 0 // 不重试
 	options.Proxy = proxyServer.URL
 	xmapInstance, err := api.New(options)
