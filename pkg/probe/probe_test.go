@@ -109,6 +109,19 @@ func TestParseRegexPattern(t *testing.T) {
 
 }
 
+func TestParseMatchRuleStopsFlagsAtVersionInfo(t *testing.T) {
+	p := &Probe{Name: "TestProbe"}
+	line := `match test m|^hello.*world$|s p/ISC BIND/`
+
+	parseMatchRule(p, line, 1)
+
+	assert.Len(t, p.MatchGroup, 1)
+	match, err := p.Match([]byte("hello\nworld"))
+	assert.NoError(t, err)
+	assert.NotNil(t, match)
+	assert.Equal(t, "test", match.Match.Service)
+}
+
 // 创建测试用的正则表达式
 func createTestRegex(pattern string) *regexp2.Regexp {
 	r, _ := regexp2.Compile(pattern, regexp2.None)

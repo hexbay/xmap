@@ -34,14 +34,12 @@ func hexToInt(c byte) int {
 
 // getPatternRegexp 编译正则表达式模式，并添加超时保护
 func getPatternRegexp(pattern string, opt string) (*regexp2.Regexp, error) {
-	var o regexp2.RegexOptions
-	switch opt {
-	case "i":
-		o = regexp2.IgnoreCase
-	case "s":
-		o = regexp2.Singleline
-	default:
-		o = regexp2.None
+	o := regexp2.None
+	if strings.Contains(opt, "i") {
+		o |= regexp2.IgnoreCase
+	}
+	if strings.Contains(opt, "s") {
+		o |= regexp2.Singleline
 	}
 	// 编译正则表达式
 	re, err := regexp2.Compile(pattern, o)
@@ -329,12 +327,11 @@ func parseMatchRule(probe *Probe, line string, lineIndex int) {
 		flags := ""
 		if end+1 < len(patternContent) {
 			flags = patternContent[end+1:]
-			// 处理标志，如 i（不区分大小写）、s（单行模式）等
-			if strings.Contains(flags, "i") {
-				patternType = "i"
-			} else if strings.Contains(flags, "s") {
-				patternType = "s"
+			if spaceIndex := strings.IndexByte(flags, ' '); spaceIndex >= 0 {
+				flags = flags[:spaceIndex]
 			}
+			// 处理标志，如 i（不区分大小写）、s（单行模式）等
+			patternType = flags
 		}
 	} else {
 		gologger.Warning().Msgf("不支持的模式类型: %s", patternPart)
