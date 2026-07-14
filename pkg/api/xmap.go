@@ -77,6 +77,7 @@ func (x *XMap) Scan(ctx context.Context, target *types.ScanTarget) (*types.ScanR
 		// 执行Web扫描
 		webResult, err := x.webScanner.ScanWithContext(ctx, url)
 		result.Service = target.Scheme
+		result.SSL = target.Scheme == "https"
 		x.enrichResultWithWebData(result, webResult)
 		// 完成扫描,计算耗时
 		result.Complete(err)
