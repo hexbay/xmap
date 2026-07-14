@@ -4,14 +4,13 @@ import (
 	"context"
 	"fmt"
 	"testing"
-	"time"
 
-	"github.com/projectdiscovery/gologger"
-	"github.com/projectdiscovery/gologger/levels"
-	"github.com/stretchr/testify/assert"
 	"github.com/hexbay/xmap/pkg/api"
 	"github.com/hexbay/xmap/pkg/types"
 	"github.com/hexbay/xmap/testutils"
+	"github.com/projectdiscovery/gologger"
+	"github.com/projectdiscovery/gologger/levels"
+	"github.com/stretchr/testify/assert"
 )
 
 func CreateXmapInstance() *api.XMap {
@@ -168,7 +167,6 @@ func TestPostgreSQLScan(t *testing.T) {
 	assert.NoError(t, err, "启动PostgreSQL测试服务器失败")
 	defer server.Stop()
 	fmt.Printf("PostgreSQL服务器已启动，地址: %s\n", server.GetAddress())
-	//time.Sleep(100 * time.Second)
 	target := types.NewTarget(server.GetAddress())
 	ctx := context.Background()
 	xmap := CreateXmapInstance()
@@ -247,7 +245,6 @@ func TestTLSScan(t *testing.T) {
 	assert.NoError(t, err, "启动TLS测试服务器失败")
 	defer server.Stop()
 	fmt.Printf("TLS服务器已启动，地址: %s\n", server.GetAddress())
-	time.Sleep(100 * time.Second)
 	target := types.NewTarget(server.GetAddress())
 	ctx := context.Background()
 	xmap := CreateXmapInstance()
