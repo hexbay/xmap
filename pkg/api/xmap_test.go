@@ -11,10 +11,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/hexbay/xmap/pkg/types"
 	"github.com/projectdiscovery/gologger"
 	"github.com/projectdiscovery/gologger/levels"
 	"github.com/stretchr/testify/assert"
-	"github.com/hexbay/xmap/pkg/types"
 )
 
 func createXmap() *XMap {
@@ -360,7 +360,8 @@ func TestTimeoutScan(t *testing.T) {
 	assert.NotNil(t, xmapInstance, "初始化XMap实例失败")
 	ctx := context.Background()
 	result, err := xmapInstance.Scan(ctx, types.NewTarget(server.GetAddress()))
-	assert.NoError(t, err)
+	assert.Error(t, err)
+	assert.NotNil(t, result)
 	assert.True(t, result.Duration > 10)
 	assert.Equal(t, result.Service, "")
 }
