@@ -30,14 +30,15 @@ jobs:
       run: |
         # Create dist directory
         mkdir -p dist
+        LDFLAGS="-s -w -X github.com/hexbay/xmap/pkg/runner.Version=${{ steps.version.outputs.VERSION }}"
         
         # Build for different platforms
-        GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o dist/xmap-linux-amd64 .
-        GOOS=linux GOARCH=arm64 go build -ldflags="-s -w" -o dist/xmap-linux-arm64 .
-        GOOS=darwin GOARCH=amd64 go build -ldflags="-s -w" -o dist/xmap-darwin-amd64 .
-        GOOS=darwin GOARCH=arm64 go build -ldflags="-s -w" -o dist/xmap-darwin-arm64 .
-        GOOS=windows GOARCH=amd64 go build -ldflags="-s -w" -o dist/xmap-windows-amd64.exe .
-        GOOS=windows GOARCH=arm64 go build -ldflags="-s -w" -o dist/xmap-windows-arm64.exe .
+        GOOS=linux GOARCH=amd64 go build -ldflags="$LDFLAGS" -o dist/xmap-linux-amd64 .
+        GOOS=linux GOARCH=arm64 go build -ldflags="$LDFLAGS" -o dist/xmap-linux-arm64 .
+        GOOS=darwin GOARCH=amd64 go build -ldflags="$LDFLAGS" -o dist/xmap-darwin-amd64 .
+        GOOS=darwin GOARCH=arm64 go build -ldflags="$LDFLAGS" -o dist/xmap-darwin-arm64 .
+        GOOS=windows GOARCH=amd64 go build -ldflags="$LDFLAGS" -o dist/xmap-windows-amd64.exe .
+        GOOS=windows GOARCH=arm64 go build -ldflags="$LDFLAGS" -o dist/xmap-windows-arm64.exe .
 
     - name: Create archives
       run: |

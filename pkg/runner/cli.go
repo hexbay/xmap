@@ -7,8 +7,8 @@ import (
 	"os"
 )
 
-// Version 版本信息
-const Version = "v0.1.0"
+// Version 版本信息，由 release workflow 通过 ldflags 注入。
+var Version = "dev"
 
 // Banner 程序的banner
 var Banner = fmt.Sprintf(`

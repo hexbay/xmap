@@ -35,7 +35,7 @@ jobs:
       run: go vet ./...
 
     - name: Build
-      run: go build -v .
+      run: go build -v -ldflags="-X github.com/hexbay/xmap/pkg/runner.Version=dev-${GITHUB_SHA::7}" .
 
   build-matrix:
     runs-on: ubuntu-latest
@@ -59,9 +59,9 @@ jobs:
         GOARCH: ${{ matrix.goarch }}
       run: |
         if [ "${{ matrix.goos }}" = "windows" ]; then
-          go build -ldflags="-s -w" -o xmap-${{ matrix.goos }}-${{ matrix.goarch }}.exe .
+          go build -ldflags="-s -w -X github.com/hexbay/xmap/pkg/runner.Version=dev-${GITHUB_SHA::7}" -o xmap-${{ matrix.goos }}-${{ matrix.goarch }}.exe .
         else
-          go build -ldflags="-s -w" -o xmap-${{ matrix.goos }}-${{ matrix.goarch }} .
+          go build -ldflags="-s -w -X github.com/hexbay/xmap/pkg/runner.Version=dev-${GITHUB_SHA::7}" -o xmap-${{ matrix.goos }}-${{ matrix.goarch }} .
         fi
 
     - name: Upload artifacts
