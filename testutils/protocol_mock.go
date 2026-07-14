@@ -266,8 +266,12 @@ func (s *TestServer) serveTCP() {
 				// 遍历规则列表，按优先级匹配
 				for _, rule := range s.rules {
 					if rule.Matcher.Match([]byte{}) {
+						s.requestMutex.Lock()
+						s.requestCount++
+						s.requestMutex.Unlock()
+
 						time.Sleep(s.responseDelay)
-						response := rule.Handler.Handle(rule.Handler.Handle([]byte{}))
+						response := rule.Handler.Handle([]byte{})
 						_, _ = c.Write(response)
 						return
 					}
