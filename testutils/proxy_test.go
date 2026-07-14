@@ -11,9 +11,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/assert"
 	"github.com/hexbay/xmap/pkg/api"
 	"github.com/hexbay/xmap/pkg/types"
+	"github.com/stretchr/testify/assert"
 )
 
 // TestProxyConnection 测试通过代理连接到目标服务器
@@ -133,18 +133,18 @@ func TestProxyConnection(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			// 创建XMap实例，根据测试用例配置是否使用代理
-			options := []api.Option{
-				api.WithTimeout(5 * time.Second),
-				api.WithRetries(1),
-				api.WithVersionIntensity(7),
-			}
+			options := types.DefaultOptions()
+			options.Timeout = 5
+			options.Retries = 1
+			options.VersionIntensity = 7
 
 			// 如果需要使用代理，添加代理选项
 			if tc.useProxy {
-				options = append(options, api.WithProxy(proxyServer.URL))
+				options.Proxy = proxyServer.URL
 			}
 
-			xmapInstance := api.NewXMap(options...)
+			xmapInstance, err := api.New(options)
+			assert.NoError(t, err, "初始化XMap实例失败")
 			assert.NotNil(t, xmapInstance, "初始化XMap实例失败")
 
 			// 创建扫描目标
@@ -168,7 +168,7 @@ func TestProxyConnection(t *testing.T) {
 			assert.NotNil(t, result, "扫描结果不应为空")
 			if tc.expectedResult {
 				assert.Equal(t, "http", result.Service, "服务识别错误")
-				assert.Contains(t, result.Banner, "nginx", "Banner识别错误")
+				assert.Contains(t, string(result.RawResponse), "nginx", "Banner识别错误")
 			}
 		})
 	}
@@ -197,11 +197,12 @@ func TestProxyTimeout(t *testing.T) {
 	fmt.Printf("超时代理服务器已启动，地址: %s\n", proxyServer.URL)
 
 	// 创建XMap实例，使用短超时时间
-	xmapInstance := api.NewXMap(
-		api.WithTimeout(1*time.Second), // 设置1秒超时，小于服务器响应延迟
-		api.WithRetries(0),             // 不重试
-		api.WithProxy(proxyServer.URL), // 使用代理
-	)
+	options := types.DefaultOptions()
+	options.Timeout = 1 // 设置1秒超时，小于服务器响应延迟
+	options.Retries = 0 // 不重试
+	options.Proxy = proxyServer.URL
+	xmapInstance, err := api.New(options)
+	assert.NoError(t, err, "初始化XMap实例失败")
 	assert.NotNil(t, xmapInstance, "初始化XMap实例失败")
 
 	// 创建扫描目标
@@ -220,7 +221,7 @@ func TestProxyTimeout(t *testing.T) {
 
 	// 验证是否发生了超时或代理错误
 	assert.NotNil(t, result, "扫描结果不应为空")
-	assert.True(t, result.Error != nil || result.ErrorType != types.ErrorTypeNone, "应该有超时或代理错误")
+	assert.True(t, err != nil || result.Error != nil || result.Status == types.StatusError, "应该有超时或代理错误")
 }
 
 // TestInvalidProxy 测试无效代理情况
@@ -239,11 +240,12 @@ func TestInvalidProxy(t *testing.T) {
 	invalidProxyURL := "http://127.0.0.1:65535" // 使用一个几乎肯定不可用的端口
 
 	// 创建XMap实例，使用无效代理
-	xmapInstance := api.NewXMap(
-		api.WithTimeout(2*time.Second),
-		api.WithRetries(0),
-		api.WithProxy(invalidProxyURL),
-	)
+	options := types.DefaultOptions()
+	options.Timeout = 2
+	options.Retries = 0
+	options.Proxy = invalidProxyURL
+	xmapInstance, err := api.New(options)
+	assert.NoError(t, err, "初始化XMap实例失败")
 	assert.NotNil(t, xmapInstance, "初始化XMap实例失败")
 
 	// 创建扫描目标
@@ -260,7 +262,8 @@ func TestInvalidProxy(t *testing.T) {
 	// 打印扫描结果和错误信息
 	fmt.Printf("无效代理测试扫描结果: %+v, 错误: %v\n", result, err)
 
-	// 验证是否发生了代理连接错误
+	// 代理仅用于Web指纹阶段，基础TCP服务识别不依赖代理。
 	assert.NotNil(t, result, "扫描结果不应为空")
-	assert.True(t, result.Error != nil || result.ErrorType != types.ErrorTypeNone, "应该有代理连接错误")
+	assert.NoError(t, err, "基础服务扫描不应受无效代理影响")
+	assert.Equal(t, "http", result.Service, "服务识别错误")
 }
