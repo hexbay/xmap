@@ -6,7 +6,7 @@ toolchain go1.23.7
 
 require (
 	github.com/dlclark/regexp2 v1.11.4
-	github.com/hexbay/appfinger v1.6.17
+	github.com/hexbay/appfinger v1.6.18
 	github.com/logrusorgru/aurora v2.0.3+incompatible
 	github.com/projectdiscovery/fastdialer v0.4.0
 	github.com/projectdiscovery/goflags v0.1.74

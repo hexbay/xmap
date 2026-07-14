@@ -8,8 +8,6 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/hexbay/appfinger/pkg/external/customrules"
-
 	"github.com/hexbay/xmap/pkg/input"
 	"github.com/hexbay/xmap/pkg/scanner"
 	"github.com/remeh/sizedwaitgroup"
@@ -57,7 +55,7 @@ func (x *XMap) init() error {
 		return initErr
 	}
 	// 初始化Web规则库
-	initErr = InitWebRuleManager(customrules.GetDefaultDirectory())
+	initErr = InitWebRuleManager(x.options.AppFingerHome)
 	if initErr != nil {
 		return initErr
 	}

@@ -3,9 +3,10 @@ package api
 import (
 	"context"
 	"fmt"
-	"github.com/projectdiscovery/gologger"
+
 	"github.com/hexbay/appfinger/pkg/external/customrules"
 	"github.com/hexbay/appfinger/pkg/rule"
+	"github.com/projectdiscovery/gologger"
 )
 
 // InitWebRuleManager 初始化Web指纹规则管理器
@@ -19,8 +20,11 @@ func InitWebRuleManager(fingerprintsPath string) error {
 	}
 	// 如果未指定指纹库路径，使用默认路径
 	if fingerprintsPath == "" {
-		// 尝试几个可能的路径
-		fingerprintsPath = customrules.GetDefaultDirectory()
+		var err error
+		fingerprintsPath, err = customrules.EnsureDefaultDirectory(context.Background())
+		if err != nil {
+			return fmt.Errorf("初始化默认Web指纹库失败: %v", err)
+		}
 	}
 	// 加载指定路径的指纹库
 	if err := ruleManager.LoadRules(fingerprintsPath); err != nil {
