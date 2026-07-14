@@ -117,39 +117,37 @@ func (s *ServiceScanner) executeUDPProbes(ctx context.Context, target *types.Sca
 		// UDP 不支持 SSL/TLS
 		response, err := s.executeUDPProbe(ctx, target, pb)
 		observer.watch(response, err)
-		if err != nil {
-			if s.options.DebugResponse && len(response) > 0 {
-				gologger.Print().Msgf("Read (%d bytes) for UDP probe %s on %s:%d:\n%s", len(response), pb.Name, target.IP, target.Port, formatProbeData(response))
+		if s.options.DebugResponse && len(response) > 0 {
+			gologger.Print().Msgf("Read (%d bytes) for UDP probe %s on %s:%d:\n%s", len(response), pb.Name, target.IP, target.Port, formatProbeData(response))
+		}
+		if len(response) > 0 {
+			matchResult, err := pb.Match(response)
+			if err != nil {
+				gologger.Debug().Msgf("匹配错误: %v", err)
+				continue
 			}
-			if len(response) > 0 {
-				matchResult, err := pb.Match(response)
-				if err != nil {
-					gologger.Debug().Msgf("匹配错误: %v", err)
-					continue
+			if matchResult != nil {
+				// 设置服务信息
+				result.Service = matchResult.Match.Service
+				result.RawResponse = response
+				result.MatchedProbe = pb.Name
+				// 如果是通过回退匹配的，记录日志
+				if matchResult.IsFallback {
+					gologger.Debug().Msgf("通过回退匹配成功: %s -> %s, 路径: %v",
+						pb.Name, matchResult.Probe.Name, matchResult.FallbackPath)
 				}
-				if matchResult != nil {
-					// 设置服务信息
-					result.Service = matchResult.Match.Service
-					result.RawResponse = response
-					result.MatchedProbe = pb.Name
-					// 如果是通过回退匹配的，记录日志
-					if matchResult.IsFallback {
-						gologger.Debug().Msgf("通过回退匹配成功: %s -> %s, 路径: %v",
-							pb.Name, matchResult.Probe.Name, matchResult.FallbackPath)
-					}
 
-					// 设置额外信息
-					if matchResult.VersionInfo != nil {
-						if result.Extra == nil {
-							result.Extra = make(map[string]interface{})
-						}
-						// 直接将 VersionInfo 中的键值对添加到 result.Extra 中
-						for k, v := range matchResult.VersionInfo {
-							result.Extra[k] = v
-						}
+				// 设置额外信息
+				if matchResult.VersionInfo != nil {
+					if result.Extra == nil {
+						result.Extra = make(map[string]interface{})
 					}
-					return nil
+					// 直接将 VersionInfo 中的键值对添加到 result.Extra 中
+					for k, v := range matchResult.VersionInfo {
+						result.Extra[k] = v
+					}
 				}
+				return nil
 			}
 		}
 	}
