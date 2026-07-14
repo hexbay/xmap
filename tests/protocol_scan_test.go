@@ -11,6 +11,7 @@ import (
 	"github.com/projectdiscovery/gologger"
 	"github.com/projectdiscovery/gologger/levels"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func CreateXmapInstance() *api.XMap {
@@ -239,10 +240,10 @@ func TestTLSScan(t *testing.T) {
 	// 创建TLS服务器
 	//gologger.DefaultLogger.SetMaxLevel(levels.LevelDebug)
 	server, err := testutils.TLSServer()
-	assert.NoError(t, err, "创建TLS测试服务器失败")
+	require.NoError(t, err, "创建TLS测试服务器失败")
 	// 启动服务器
 	err = server.Start()
-	assert.NoError(t, err, "启动TLS测试服务器失败")
+	require.NoError(t, err, "启动TLS测试服务器失败")
 	defer server.Stop()
 	fmt.Printf("TLS服务器已启动，地址: %s\n", server.GetAddress())
 	target := types.NewTarget(server.GetAddress())

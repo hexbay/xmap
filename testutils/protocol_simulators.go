@@ -374,7 +374,7 @@ func TLSServer() (*TestServer, error) {
 		MinVersion:   tls.VersionTLS12,
 	}
 	// 创建TLS监听器
-	listener, err := tls.Listen("tcp", "127.0.0.1:443", tlsConfig)
+	listener, err := tls.Listen("tcp", "127.0.0.1:0", tlsConfig)
 	if err != nil {
 		return nil, err
 	}
