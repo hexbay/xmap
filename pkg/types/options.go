@@ -35,6 +35,7 @@ type Options struct {
 	// 指纹库选项
 	AppFingerHome string // 指纹库路径
 	UpdateRule    bool   // 是否更新指纹规则
+	Update        bool   // 是否更新xmap程序
 
 	// Web扫描选项
 	DisableIcon bool // 禁用图标请求匹配

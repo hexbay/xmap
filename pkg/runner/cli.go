@@ -2,8 +2,8 @@ package runner
 
 import (
 	"fmt"
-	"github.com/projectdiscovery/goflags"
 	"github.com/hexbay/xmap/pkg/types"
+	"github.com/projectdiscovery/goflags"
 	"os"
 )
 
@@ -74,6 +74,7 @@ func ParseOptions() (*types.Options, error) {
 
 	// 创建其他选项组
 	flagSet.CreateGroup("其他", "其他选项",
+		flagSet.BoolVar(&options.Update, "update", false, "更新xmap到最新版本"),
 		flagSet.BoolVarP(&options.UpdateRule, "update-rule", "ur", false, "更新指纹规则库"),
 		flagSet.BoolVarP(&options.Version, "version", "V", false, "显示版本信息"),
 		flagSet.BoolVar(&options.EnablePprof, "enable-pprof", false, "启用性能分析"),
