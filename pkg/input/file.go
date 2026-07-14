@@ -82,9 +82,7 @@ func (f *FileInputProvider) Scan(callback func(value *types.ScanTarget) bool) {
 			continue // 跳过空行和注释行
 		}
 
-		target := &types.ScanTarget{
-			Raw: line,
-		}
+		target := types.NewTarget(line)
 
 		if !callback(target) {
 			break
