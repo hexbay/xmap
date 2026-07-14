@@ -34,7 +34,7 @@ func TestHTTPScan(t *testing.T) {
 	assert.NoError(t, err, "启动HTTP测试服务器失败")
 	defer server.Stop()
 	fmt.Printf("HTTP服务器已启动，地址: %s\n", server.GetAddress())
-	target := types.NewTarget(server.GetAddress())
+	target := types.NewTarget("https://" + server.GetAddress())
 	ctx := context.Background()
 	xmap := CreateXmapInstance()
 	assert.NoError(t, err, "创建XMap实例失败")
@@ -53,7 +53,7 @@ func TestSSHScan(t *testing.T) {
 	assert.NoError(t, err, "启动SSH测试服务器失败")
 	defer server.Stop()
 	fmt.Printf("SSH服务器已启动，地址: %s\n", server.GetAddress())
-	target := types.NewTarget(server.GetAddress())
+	target := types.NewTarget("https://" + server.GetAddress())
 	ctx := context.Background()
 	xmap, err := api.New(types.DefaultOptions())
 	assert.NoError(t, err, "创建XMap实例失败")
@@ -260,7 +260,11 @@ func TestTLSScan(t *testing.T) {
 func TestRealTLSScan(t *testing.T) {
 	// 创建TLS服务器
 	//gologger.DefaultLogger.SetMaxLevel(levels.LevelDebug)
-	target := types.NewTarget("182.61.201.211:443")
+	server, err := testutils.RealTLSServer()
+	assert.NoError(t, err, "创建真实TLS测试服务器失败")
+	defer server.Stop()
+
+	target := types.NewTarget("https://" + server.GetAddress())
 	ctx := context.Background()
 	xmap := CreateXmapInstance()
 	result, err := xmap.Scan(ctx, target)
@@ -270,6 +274,7 @@ func TestRealTLSScan(t *testing.T) {
 	assert.Equal(t, "https", result.Service, "服务识别错误")
 	assert.Equal(t, "tcp", result.Protocol, "协议识别错误")
 	assert.Equal(t, true, result.SSL, "SSL识别错误")
+	assert.NotNil(t, result.Certificate)
 	assert.True(t, len(result.Certificate.CertInfo) > 0)
 }
 
