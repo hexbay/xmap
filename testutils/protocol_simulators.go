@@ -157,7 +157,7 @@ func DNSServer() *TestServer {
 
 	// 匹配DNS版本查询（用于服务识别）
 	dnsVersionMatcher := &PrefixMatcher{Prefix: []byte{0x00, 0x06, 0x01}}
-	server.AddRule(dnsVersionMatcher, NewStaticResponseHandler(dnsVersionResponse), 10)
+	server.AddRule(dnsVersionMatcher, NewStaticResponseHandler(dnsVersionResponse), 30)
 
 	return server
 }
