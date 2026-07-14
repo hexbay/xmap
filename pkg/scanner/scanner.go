@@ -312,7 +312,7 @@ func (s *ServiceScanner) executeUDPProbe(ctx context.Context, target *types.Scan
 	}
 
 	// 读取响应（UDP 可能不会有响应，所以要特别处理）
-	response, err := s.readResponse(conn, timeout)
+	response, err := s.readResponse(conn, timeout/2)
 
 	if len(response) > 0 {
 		return response, nil
