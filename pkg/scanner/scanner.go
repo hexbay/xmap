@@ -115,7 +115,7 @@ func (s *ServiceScanner) executeUDPProbes(ctx context.Context, target *types.Sca
 		}
 		// 执行 UDP 探针
 		// UDP 不支持 SSL/TLS
-		response, err := s.executeUDPProbe(ctx, target, pb)
+		response, err := s.executeUDPProbeWithRetries(ctx, target, pb)
 		observer.watch(response, err)
 		if s.options.DebugResponse && len(response) > 0 {
 			gologger.Print().Msgf("Read (%d bytes) for UDP probe %s on %s:%d:\n%s", len(response), pb.Name, target.IP, target.Port, formatProbeData(response))
@@ -171,7 +171,7 @@ func (s *ServiceScanner) executeTCPProbes(ctx context.Context, target *types.Sca
 			// 继续处理
 		}
 		// 执行 TCP 探针
-		response, err := s.executeTCPProbe(ctx, target, pb, useSSL)
+		response, err := s.executeTCPProbeWithRetries(ctx, target, pb, useSSL)
 		observer.watch(response, err)
 		if s.options.DebugResponse && len(response) > 0 {
 			gologger.Print().Msgf("Read (%d bytes) for TCP probe %s on %s:%d:\n%s", len(response), pb.Name, target.IP, target.Port, formatProbeData(response))
@@ -206,6 +206,12 @@ func (s *ServiceScanner) executeTCPProbes(ctx context.Context, target *types.Sca
 	}
 	// 如果没有匹配到任何服务
 	return errors.New("not matched")
+}
+
+func (s *ServiceScanner) executeTCPProbeWithRetries(ctx context.Context, target *types.ScanTarget, probe *probe.Probe, useSSL bool) ([]byte, error) {
+	return retryProbe(ctx, s.options.Retries, func() ([]byte, error) {
+		return s.executeTCPProbe(ctx, target, probe, useSSL)
+	})
 }
 
 // executeTCPProbe 执行 tcp 探针
@@ -320,6 +326,36 @@ func (s *ServiceScanner) executeUDPProbe(ctx context.Context, target *types.Scan
 	}
 
 	return response, nil
+}
+
+func (s *ServiceScanner) executeUDPProbeWithRetries(ctx context.Context, target *types.ScanTarget, probe *probe.Probe) ([]byte, error) {
+	return retryProbe(ctx, s.options.Retries, func() ([]byte, error) {
+		return s.executeUDPProbe(ctx, target, probe)
+	})
+}
+
+func retryProbe(ctx context.Context, retries int, run func() ([]byte, error)) ([]byte, error) {
+	if retries < 0 {
+		retries = 0
+	}
+	attempts := retries + 1
+	var lastResponse []byte
+	var lastErr error
+	for attempt := 0; attempt < attempts; attempt++ {
+		select {
+		case <-ctx.Done():
+			return lastResponse, ctx.Err()
+		default:
+		}
+
+		response, err := run()
+		if len(response) > 0 || err == nil {
+			return response, err
+		}
+		lastResponse = response
+		lastErr = err
+	}
+	return lastResponse, lastErr
 }
 
 // createConnection 创建网络连接

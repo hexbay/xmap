@@ -1,15 +1,17 @@
 package scanner
 
 import (
+	"context"
 	"encoding/hex"
+	"errors"
 	"fmt"
-	"github.com/projectdiscovery/gologger"
-	"github.com/projectdiscovery/gologger/levels"
 	"github.com/hexbay/xmap/pkg/types"
 	"testing"
 
-	"github.com/stretchr/testify/assert"
 	"github.com/hexbay/xmap/pkg/utils"
+	"github.com/projectdiscovery/gologger"
+	"github.com/projectdiscovery/gologger/levels"
+	"github.com/stretchr/testify/assert"
 )
 
 func createTestScanner() *ServiceScanner {
@@ -38,4 +40,30 @@ func TestParseCertificatesFromServerHello(t *testing.T) {
 
 func TestDialerGetTls(t *testing.T) {
 	//	todo dialer 目前使用的是hostname 作为key、应该使用host 作为key才能保证数据准确性
+}
+
+func TestRetryProbeAttemptsRetriesPlusInitialAttempt(t *testing.T) {
+	attempts := 0
+	_, err := retryProbe(context.Background(), 2, func() ([]byte, error) {
+		attempts++
+		return nil, errors.New("temporary failure")
+	})
+
+	assert.Error(t, err)
+	assert.Equal(t, 3, attempts)
+}
+
+func TestRetryProbeStopsAfterResponse(t *testing.T) {
+	attempts := 0
+	response, err := retryProbe(context.Background(), 3, func() ([]byte, error) {
+		attempts++
+		if attempts == 2 {
+			return []byte("ok"), nil
+		}
+		return nil, errors.New("temporary failure")
+	})
+
+	assert.NoError(t, err)
+	assert.Equal(t, []byte("ok"), response)
+	assert.Equal(t, 2, attempts)
 }
