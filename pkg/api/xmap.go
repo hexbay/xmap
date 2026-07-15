@@ -91,12 +91,12 @@ func (x *XMap) init() error {
 		return initErr
 	}
 	// 初始化Web规则库
-	initErr = InitWebRuleManager(x.options.AppFingerHome)
+	webRules, initErr := InitWebRuleManager(x.options.AppFingerHome)
 	if initErr != nil {
 		return initErr
 	}
 	// 创建Web扫描器
-	x.webScanner, initErr = web.NewScanner(x.options)
+	x.webScanner, initErr = web.NewScanner(x.options, webRules)
 
 	return initErr
 }
@@ -109,7 +109,7 @@ func (x *XMap) Scan(ctx context.Context, target *types.ScanTarget) (*types.ScanR
 		result := types.NewScanResult(target)
 		url := x.buildTargetURL(target, target.Scheme)
 		// 执行Web扫描
-		webResult, err := x.webScanner.ScanWithContext(ctx, url)
+		webResult, err := x.webScanner.Scan(ctx, url)
 		result.Service = target.Scheme
 		result.SSL = target.Scheme == "https"
 		x.enrichResultWithWebData(result, webResult)
@@ -131,7 +131,7 @@ func (x *XMap) Scan(ctx context.Context, target *types.ScanTarget) (*types.ScanR
 		// 构建URL
 		url := x.buildTargetURL(target, result.Service)
 		// 执行Web扫描
-		webResult, err := x.webScanner.ScanWithContext(ctx, url)
+		webResult, err := x.webScanner.Scan(ctx, url)
 		if err != nil {
 			gologger.Debug().Msgf("Web扫描失败: %v", err)
 		} else {
@@ -153,7 +153,7 @@ func (x *XMap) buildTargetURL(target *types.ScanTarget, service string) string {
 }
 
 // enrichResultWithWebData 使用Web扫描数据丰富扫描结果
-func (x *XMap) enrichResultWithWebData(result *types.ScanResult, webResult *web.ScanResult) {
+func (x *XMap) enrichResultWithWebData(result *types.ScanResult, webResult *web.Result) {
 	if result == nil || webResult == nil {
 		return
 	}
@@ -161,7 +161,7 @@ func (x *XMap) enrichResultWithWebData(result *types.ScanResult, webResult *web.
 	if result.Banner == nil {
 		result.Banner = make(map[string]interface{})
 	}
-	result.URL = webResult.URL
+	result.URL = webResult.Target
 	// 添加Banner信息到Metadata
 	if webResult.Banner != nil {
 		// 添加标题
@@ -202,13 +202,19 @@ func (x *XMap) enrichResultWithWebData(result *types.ScanResult, webResult *web.
 	}
 	// 添加指纹信息
 	if len(webResult.Components) > 0 {
-		for name, ext := range webResult.Components {
+		for _, component := range webResult.Components {
 			// 创建新的map[string]interface{}
 			componentInfo := make(map[string]interface{})
-			componentInfo["name"] = name
+			componentInfo["name"] = component.Name
 			// 复制其他属性
-			for k, v := range ext {
+			for k, v := range component.Values {
 				componentInfo[k] = v
+			}
+			if component.Rule != "" {
+				componentInfo["rule"] = component.Rule
+			}
+			if component.URL != "" {
+				componentInfo["url"] = component.URL
 			}
 			result.Components = append(result.Components, componentInfo)
 		}
