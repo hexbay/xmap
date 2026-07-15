@@ -106,6 +106,10 @@ github.com/hexbay/appfinger v1.6.21 h1:N516zjN1605l2JumddnH//HOdxtQa8JqyhzqnKFVl
 github.com/hexbay/appfinger v1.6.21/go.mod h1:eQQyaBgiAQ/EHsUJrVFs6zpAttsSynKRfksXGC/rbFw=
 github.com/hexbay/appfinger v1.7.0 h1:SPsHF17kUo5fXsEavxbNZVAfULbtv6NmNg2Sc5xjZfI=
 github.com/hexbay/appfinger v1.7.0/go.mod h1:eQQyaBgiAQ/EHsUJrVFs6zpAttsSynKRfksXGC/rbFw=
+github.com/hexbay/appfinger v1.7.1-0.20260715134234-1c0dacd0fa82 h1:Kz4K5jq9ItCCDG5a08C/7TGJoBBU6Mn1ROx2crrNftc=
+github.com/hexbay/appfinger v1.7.1-0.20260715134234-1c0dacd0fa82/go.mod h1:eQQyaBgiAQ/EHsUJrVFs6zpAttsSynKRfksXGC/rbFw=
+github.com/hexbay/appfinger v1.7.1 h1:ot5xy9oex5zCERlULXy+ueF1XbsWGBIhZf6/Luv2hks=
+github.com/hexbay/appfinger v1.7.1/go.mod h1:eQQyaBgiAQ/EHsUJrVFs6zpAttsSynKRfksXGC/rbFw=
 github.com/hpcloud/tail v1.0.0/go.mod h1:ab1qPbhIpdTxEkNHXyeSf5vhxWSCs/tWer42PpOxQnU=
 github.com/iancoleman/orderedmap v0.0.0-20190318233801-ac98e3ecb4b0 h1:i462o439ZjprVSFSZLZxcsoAe592sZB1rci2Z8j4wdk=
 github.com/iancoleman/orderedmap v0.0.0-20190318233801-ac98e3ecb4b0/go.mod h1:N0Wam8K1arqPXNWjMo21EXnBPOPp36vB07FNRdD2geA=

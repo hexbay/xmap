@@ -3,20 +3,26 @@ package api
 import (
 	"context"
 	"fmt"
+	"sync"
 
 	"github.com/hexbay/appfinger/pkg/external/customrules"
 	"github.com/hexbay/appfinger/pkg/rule"
 	"github.com/projectdiscovery/gologger"
 )
 
-var webRuleManager = rule.NewManager()
+var (
+	webRuleManager   *rule.Manager
+	webRuleManagerMu sync.Mutex
+)
 
 // InitWebRuleManager 初始化Web指纹规则管理器
 func InitWebRuleManager(fingerprintsPath string) (*rule.RuleSet, error) {
+	webRuleManagerMu.Lock()
+	defer webRuleManagerMu.Unlock()
 	// 检查规则库是否已加载
-	if webRuleManager.IsLoaded() {
+	if webRuleManager != nil && webRuleManager.IsLoaded() {
 		gologger.Debug().Msgf("Web指纹库已加载，上次加载时间: %s", webRuleManager.GetLastLoadTime().Format("2006-01-02 15:04:05"))
-		return webRuleManager.GetRuleSet(), nil
+		return webRuleManager.Snapshot(), nil
 	}
 	// 如果未指定指纹库路径，使用默认路径
 	if fingerprintsPath == "" {
@@ -26,15 +32,21 @@ func InitWebRuleManager(fingerprintsPath string) (*rule.RuleSet, error) {
 			return nil, fmt.Errorf("初始化默认Web指纹库失败: %v", err)
 		}
 	}
-	// 加载指定路径的指纹库
-	if err := webRuleManager.LoadRules(fingerprintsPath); err != nil {
+	manager, err := rule.NewManager(fingerprintsPath)
+	if err != nil {
 		return nil, fmt.Errorf("加载Web指纹库失败: %v", err)
 	}
-	return webRuleManager.GetRuleSet(), nil
+	webRuleManager = manager
+	return webRuleManager.Snapshot(), nil
 }
 
 // ReloadWebRules 重新加载Web指纹库规则
 func ReloadWebRules() error {
+	webRuleManagerMu.Lock()
+	defer webRuleManagerMu.Unlock()
+	if webRuleManager == nil {
+		return fmt.Errorf("规则库未初始化")
+	}
 	return webRuleManager.ReloadRules()
 }
 
