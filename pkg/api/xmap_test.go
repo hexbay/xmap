@@ -516,6 +516,29 @@ func TestScanWithCallbackWithLimiterSharesTargetConcurrency(t *testing.T) {
 	assert.LessOrEqual(t, atomic.LoadInt32(&maxInFlight), int32(2))
 }
 
+func TestScanWithCallbackPreservesPartialResultOnWebError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(1500 * time.Millisecond)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	options := types.DefaultOptions()
+	options.Timeout = 1
+	xmapInstance, err := New(options)
+	assert.NoError(t, err)
+
+	var result *types.ScanResult
+	err = xmapInstance.ScanWithCallback(context.Background(), input.FromSliceString([]string{server.URL}), func(scanResult *types.ScanResult) {
+		result = scanResult
+	})
+	assert.NoError(t, err)
+	assert.NotNil(t, result)
+	assert.Error(t, result.Error)
+	assert.Equal(t, "http", result.Service)
+	assert.GreaterOrEqual(t, result.Duration, 1.0)
+}
+
 func TestScanWithCallbackWithLimiterReleasesTokenOnCanceledScan(t *testing.T) {
 	limiter := &blockingLimiter{
 		acquired: make(chan struct{}, 1),

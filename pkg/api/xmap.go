@@ -330,6 +330,12 @@ func (x *XMap) ScanWithCallbackWithLimiter(ctx context.Context, targets input.Pr
 			// 执行扫描
 			result, err := x.Scan(scanCtx, target)
 			if err != nil {
+				if result != nil {
+					if callback != nil {
+						callback(result)
+					}
+					return
+				}
 				x.handleScanError(callback, target, err)
 				return
 			}

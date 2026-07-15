@@ -100,6 +100,10 @@ github.com/hashicorp/golang-lru/v2 v2.0.6 h1:3xi/Cafd1NaoEnS/yDssIiuVeDVywU0QdFG
 github.com/hashicorp/golang-lru/v2 v2.0.6/go.mod h1:QeFd9opnmA6QUJc5vARoKUSoFhyfM2/ZepoAG6RGpeM=
 github.com/hexbay/appfinger v1.6.18 h1:7dWl1sSTWUOJen+EH/pdU/QSdv1if55CXOxaTmA/W8c=
 github.com/hexbay/appfinger v1.6.18/go.mod h1:eQQyaBgiAQ/EHsUJrVFs6zpAttsSynKRfksXGC/rbFw=
+github.com/hexbay/appfinger v1.6.19 h1:Xxf5NMiu3nmxOIOwsVgvpJk6aJCFX2YKTUHeJ5t81WU=
+github.com/hexbay/appfinger v1.6.19/go.mod h1:eQQyaBgiAQ/EHsUJrVFs6zpAttsSynKRfksXGC/rbFw=
+github.com/hexbay/appfinger v1.6.21 h1:N516zjN1605l2JumddnH//HOdxtQa8JqyhzqnKFVlA8=
+github.com/hexbay/appfinger v1.6.21/go.mod h1:eQQyaBgiAQ/EHsUJrVFs6zpAttsSynKRfksXGC/rbFw=
 github.com/hpcloud/tail v1.0.0/go.mod h1:ab1qPbhIpdTxEkNHXyeSf5vhxWSCs/tWer42PpOxQnU=
 github.com/iancoleman/orderedmap v0.0.0-20190318233801-ac98e3ecb4b0 h1:i462o439ZjprVSFSZLZxcsoAe592sZB1rci2Z8j4wdk=
 github.com/iancoleman/orderedmap v0.0.0-20190318233801-ac98e3ecb4b0/go.mod h1:N0Wam8K1arqPXNWjMo21EXnBPOPp36vB07FNRdD2geA=
