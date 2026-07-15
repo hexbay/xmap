@@ -3,6 +3,8 @@ package web
 import (
 	"context"
 	"fmt"
+	"time"
+
 	"github.com/hexbay/appfinger/pkg/fetch"
 	"github.com/hexbay/appfinger/pkg/rule"
 	"github.com/hexbay/appfinger/pkg/runner"
@@ -24,10 +26,22 @@ func NewScanner(options *types.Options) (*Scanner, error) {
 	}
 	fetchOptions := fetch.DefaultOption()
 	fetchOptions.RetryMax = options.HttpRetry
+	if options.Timeout > 0 {
+		fetchOptions.Timeout = time.Duration(options.Timeout) * time.Second
+	}
 	fetchOptions.Proxy = options.Proxy
 	fetchOptions.DebugReq = options.DebugRequest
 	fetchOptions.DebugResp = options.DebugResponse
 	fetchOptions.DisableIcon = options.DisableIcon
+	fetchOptions.DisableJavaScript = options.DisableJS
+	fetchOptions.MaxBodySize = options.MaxBodySize
+	if fetchOptions.MaxBodySize <= 0 {
+		fetchOptions.MaxBodySize = types.DefaultMaxBodySize
+	}
+	fetchOptions.MaxIconSize = options.MaxIconSize
+	if fetchOptions.MaxIconSize <= 0 {
+		fetchOptions.MaxIconSize = types.DefaultMaxIconSize
+	}
 	fetcher := fetch.NewFetcher(fetchOptions)
 	scanner := &Scanner{
 		options: options,

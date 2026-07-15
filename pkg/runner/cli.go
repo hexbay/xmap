@@ -23,6 +23,8 @@ __  ____  ___
 // ParseOptions 解析命令行选项
 func ParseOptions() (*types.Options, error) {
 	options := types.DefaultOptions()
+	maxBodySize := goflags.Size(options.MaxBodySize)
+	maxIconSize := goflags.Size(options.MaxIconSize)
 	// 设置版本和banner
 	options.Banner = Banner
 	flagSet := goflags.NewFlagSet()
@@ -55,6 +57,8 @@ func ParseOptions() (*types.Options, error) {
 		flagSet.StringVarP(&options.Proxy, "proxy", "x", "", "HTTP代理，格式: http://host:port"),
 		flagSet.BoolVarP(&options.DisableIcon, "disable-icon", "di", false, "禁用图标请求匹配"),
 		flagSet.BoolVarP(&options.DisableJS, "disable-js", "dj", false, "禁用JavaScript规则匹配"),
+		flagSet.SizeVar(&maxBodySize, "max-body-size", "512kb", "Web响应body最大读取大小，支持 kb/mb/gb"),
+		flagSet.SizeVar(&maxIconSize, "max-icon-size", "128kb", "图标最大读取大小，支持 kb/mb/gb"),
 	)
 	// Debug
 	flagSet.CreateGroup("Debug", "Debug选项",
@@ -89,5 +93,7 @@ func ParseOptions() (*types.Options, error) {
 		fmt.Printf("XMap 版本: %s\n", Version)
 		os.Exit(0)
 	}
+	options.MaxBodySize = int64(maxBodySize)
+	options.MaxIconSize = int64(maxIconSize)
 	return options, nil
 }

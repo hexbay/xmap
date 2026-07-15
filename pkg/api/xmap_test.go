@@ -63,13 +63,12 @@ func TestProtocolDetection(t *testing.T) {
 			serverSetup: func() (*testutils.TestServer, error) {
 				// 创建SSH测试服务器
 				server := testutils.NewTestServer("tcp")
-				server.SetKeepAlive(false)
 
 				// 设置SSH响应
 				sshResponse := []byte("SSH-2.0-OpenSSH_8.2p1 Ubuntu-4ubuntu0.5\r\n")
 
 				// 添加请求-响应规则
-				server.AddRule(testutils.NewPrefixRequestMatcher([]byte("SSH-2.0-Client")), testutils.NewStaticResponseHandler(sshResponse), 5)
+				server.AddRule(testutils.NewEmptyRequestMatcher(), testutils.NewStaticResponseHandler(sshResponse), 5)
 
 				// 启动服务器
 				err := server.Start()
@@ -240,12 +239,13 @@ func TestDirectTCPConnection(t *testing.T) {
 			serverSetup: func() (*testutils.TestServer, error) {
 				// 创建SSH测试服务器
 				server := testutils.NewTestServer("tcp")
+				server.SetKeepAlive(false)
 
 				// 设置SSH响应
 				sshResponse := []byte("SSH-2.0-OpenSSH_8.2p1 Ubuntu-4ubuntu0.5\r\n")
 
 				// 添加请求-响应规则
-				server.AddRule(testutils.NewEmptyRequestMatcher(), testutils.NewStaticResponseHandler(sshResponse), 5)
+				server.AddRule(testutils.NewPrefixRequestMatcher([]byte("SSH-2.0-Client")), testutils.NewStaticResponseHandler(sshResponse), 5)
 
 				// 启动服务器
 				err := server.Start()
@@ -276,7 +276,6 @@ func TestDirectTCPConnection(t *testing.T) {
 
 				// 添加请求-响应规则
 				server.AddRule(testutils.NewPrefixRequestMatcher([]byte("GET")), testutils.NewStaticResponseHandler(httpResponse), 10)
-				server.AddRule(testutils.NewEmptyRequestMatcher(), testutils.NewStaticResponseHandler(httpResponse), 5)
 
 				// 启动服务器
 				err := server.Start()

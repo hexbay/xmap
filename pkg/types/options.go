@@ -6,6 +6,11 @@ import (
 	"github.com/projectdiscovery/goflags"
 )
 
+const (
+	DefaultMaxBodySize int64 = 512 * 1024
+	DefaultMaxIconSize int64 = 128 * 1024
+)
+
 // Limiter controls target-level scan concurrency.
 type Limiter interface {
 	Acquire(ctx context.Context) error
@@ -47,8 +52,10 @@ type Options struct {
 	Update        bool   // 是否更新xmap程序
 
 	// Web扫描选项
-	DisableIcon bool // 禁用图标请求匹配
-	DisableJS   bool // 禁用JavaScript规则匹配
+	DisableIcon bool  // 禁用图标请求匹配
+	DisableJS   bool  // 禁用JavaScript规则匹配
+	MaxBodySize int64 // Web响应body最大读取字节数
+	MaxIconSize int64 // 图标最大读取字节数
 
 	// 其他选项
 	EnablePprof bool // 是否启用性能分析
@@ -76,5 +83,7 @@ func DefaultOptions() *Options {
 		OutputType:       "json",
 		Banner:           "",
 		VersionIntensity: 7,
+		MaxBodySize:      DefaultMaxBodySize,
+		MaxIconSize:      DefaultMaxIconSize,
 	}
 }
