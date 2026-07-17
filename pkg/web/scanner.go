@@ -16,6 +16,14 @@ type Scanner = appscanner.Scanner
 // Result Web扫描结果
 type Result = appscanner.Result
 
+type staticRuleProvider struct {
+	rules *rule.RuleSet
+}
+
+func (p staticRuleProvider) Snapshot() *rule.RuleSet {
+	return p.rules
+}
+
 // NewScanner 创建新的Web扫描器
 func NewScanner(options *types.Options, rules *rule.RuleSet) (*Scanner, error) {
 	if rules == nil {
@@ -44,8 +52,8 @@ func NewScanner(options *types.Options, rules *rule.RuleSet) (*Scanner, error) {
 		return nil, fmt.Errorf("创建Web请求器失败: %w", err)
 	}
 	appScanner, err := appscanner.New(appscanner.Config{
-		Fetcher: fetcher,
-		Rules:   rules,
+		Fetcher:      fetcher,
+		RuleProvider: staticRuleProvider{rules: rules},
 	})
 	if err != nil {
 		return nil, fmt.Errorf("创建Web扫描器失败: %w", err)
