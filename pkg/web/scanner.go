@@ -16,17 +16,21 @@ type Scanner = appscanner.Scanner
 // Result Web扫描结果
 type Result = appscanner.Result
 
-type staticRuleProvider struct {
-	rules *rule.RuleSet
+type ruleProviderFunc func() *rule.RuleSet
+
+func (f ruleProviderFunc) Snapshot() *rule.RuleSet {
+	return f()
 }
 
-func (p staticRuleProvider) Snapshot() *rule.RuleSet {
-	return p.rules
-}
-
-// NewScanner 创建新的Web扫描器
-func NewScanner(options *types.Options, rules *rule.RuleSet) (*Scanner, error) {
-	if rules == nil {
+// NewScannerWithRuleProvider 创建一个会在每次扫描时读取最新规则快照的扫描器。
+func NewScannerWithRuleProvider(options *types.Options, ruleProvider func() *rule.RuleSet) (*Scanner, error) {
+	if options == nil {
+		options = types.DefaultOptions()
+	}
+	if ruleProvider == nil {
+		return nil, fmt.Errorf("规则提供器未设置")
+	}
+	if ruleProvider() == nil {
 		return nil, fmt.Errorf("规则库未加载")
 	}
 	fetchOptions := fetch.DefaultOption()
@@ -53,7 +57,7 @@ func NewScanner(options *types.Options, rules *rule.RuleSet) (*Scanner, error) {
 	}
 	appScanner, err := appscanner.New(appscanner.Config{
 		Fetcher:      fetcher,
-		RuleProvider: staticRuleProvider{rules: rules},
+		RuleProvider: ruleProviderFunc(ruleProvider),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("创建Web扫描器失败: %w", err)

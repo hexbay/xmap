@@ -91,12 +91,12 @@ func (x *XMap) init() error {
 		return initErr
 	}
 	// 初始化Web规则库
-	webRules, initErr := InitWebRuleManager(x.options.AppFingerHome)
+	initErr = InitWebRuleManager(x.options.AppFingerHome)
 	if initErr != nil {
 		return initErr
 	}
 	// 创建Web扫描器
-	x.webScanner, initErr = web.NewScanner(x.options, webRules)
+	x.webScanner, initErr = web.NewScannerWithRuleProvider(x.options, webRuleManager.Snapshot)
 
 	return initErr
 }
