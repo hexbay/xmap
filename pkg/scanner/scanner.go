@@ -52,7 +52,7 @@ func (s *ServiceScanner) ScanWithContext(ctx context.Context, target *types.Scan
 	// 创建扫描结果
 	result := types.NewScanResult(target)
 	// 对探针进行排序，优先使用适合当前端口的探针
-	probes := s.probeStore.GetProbeForPort(target.Protocol, target.Port, false)
+	probes := s.selectProbes(target.Protocol, target.Port, false)
 	if len(probes) == 0 {
 		err := errors.New("no suitable probes found for target")
 		result.Complete(err)
@@ -77,7 +77,7 @@ func (s *ServiceScanner) ScanWithContext(ctx context.Context, target *types.Scan
 			result.Certificate = certInfo
 			gologger.Debug().Msgf("parse certificates from server hello success: %v", certInfo)
 		}
-		probes = s.probeStore.GetProbeForPort(target.Protocol, target.Port, true)
+		probes = s.selectProbes(target.Protocol, target.Port, true)
 		err = s.executeProbes(ctx, target, probes, true, result)
 		if err != nil {
 			gologger.Debug().Msgf("SSL scan failed: %v", err)
@@ -85,6 +85,39 @@ func (s *ServiceScanner) ScanWithContext(ctx context.Context, target *types.Scan
 	}
 	result.Complete(err)
 	return result, err
+}
+
+// selectProbes implements the same high-level selection rule used by Nmap
+// version detection: port-specific probes are preferred, while generic probes
+// are a fallback for ports without a dedicated probe.  Trying every generic
+// protocol after a silent port-specific probe turns one closed conversation
+// into minutes of read timeouts.
+//
+// --all-probes deliberately bypasses this guard for users who need exhaustive
+// fingerprinting despite the additional time and traffic.
+func (s *ServiceScanner) selectProbes(protocol string, port int, ssl bool) []*probe.Probe {
+	probes := s.probeStore.GetProbeForPort(protocol, port, ssl)
+	if s.options.UseAllProbes {
+		return probes
+	}
+
+	preferred := make([]*probe.Probe, 0, len(probes))
+	for _, pb := range probes {
+		matchesPort := pb.HasExactPort(port)
+		if ssl {
+			matchesPort = pb.HasExactSSLPort(port)
+		}
+		if matchesPort {
+			preferred = append(preferred, pb)
+		}
+	}
+	if len(preferred) > 0 {
+		return preferred
+	}
+
+	// No port-specific signature exists. Keep the sorted generic list so
+	// uncommon ports can still be identified.
+	return probes
 }
 
 // executeProbes 执行探针扫描
@@ -158,7 +191,12 @@ func (s *ServiceScanner) executeUDPProbes(ctx context.Context, target *types.Sca
 func (s *ServiceScanner) executeTCPProbes(ctx context.Context, target *types.ScanTarget, probes []*probe.Probe, useSSL bool, result *types.ScanResult) error {
 	// 对每个探针执行扫描
 	observer := NewPortObserverEntry(target)
-	for _, pb := range probes {
+	scheduler := newTCPProbeScheduler(probes, s.options)
+	for {
+		pb, ok := scheduler.nextProbe()
+		if !ok {
+			break
+		}
 		// 处理错误
 		if ext, reason := observer.IsTerminate(); ext {
 			return errors.New(reason)
@@ -171,8 +209,9 @@ func (s *ServiceScanner) executeTCPProbes(ctx context.Context, target *types.Sca
 			// 继续处理
 		}
 		// 执行 TCP 探针
-		response, err := s.executeTCPProbeWithRetries(ctx, target, pb, useSSL)
+		response, err := s.executeTCPProbeWithRetries(ctx, target, pb, useSSL, scheduler.remaining())
 		observer.watch(response, err)
+		scheduler.observe(response, err)
 		if s.options.DebugResponse && len(response) > 0 {
 			gologger.Print().Msgf("Read (%d bytes) for TCP probe %s on %s:%d:\n%s", len(response), pb.Name, target.IP, target.Port, formatProbeData(response))
 		}
@@ -208,16 +247,26 @@ func (s *ServiceScanner) executeTCPProbes(ctx context.Context, target *types.Sca
 	return errors.New("not matched")
 }
 
-func (s *ServiceScanner) executeTCPProbeWithRetries(ctx context.Context, target *types.ScanTarget, probe *probe.Probe, useSSL bool) ([]byte, error) {
-	return retryProbe(ctx, s.options.Retries, func() ([]byte, error) {
-		return s.executeTCPProbe(ctx, target, probe, useSSL)
+func (s *ServiceScanner) executeTCPProbeWithRetries(ctx context.Context, target *types.ScanTarget, probe *probe.Probe, useSSL bool, budget time.Duration) ([]byte, error) {
+	// A TCP read timeout means the peer accepted the connection but chose not
+	// to speak this protocol. Repeating the identical payload is almost never
+	// useful and was the source of 5s * (retries + 1) stalls per probe. Keep
+	// retries for connection/write failures, where a transient network failure
+	// is still plausible.
+	return retryProbeUntil(ctx, s.options.Retries, func(err error) bool {
+		return !errors.Is(err, ReadTimeoutError)
+	}, func() ([]byte, error) {
+		return s.executeTCPProbe(ctx, target, probe, useSSL, budget)
 	})
 }
 
 // executeTCPProbe 执行 tcp 探针
-func (s *ServiceScanner) executeTCPProbe(ctx context.Context, target *types.ScanTarget, probe *probe.Probe, useSSL bool) ([]byte, error) {
+func (s *ServiceScanner) executeTCPProbe(ctx context.Context, target *types.ScanTarget, probe *probe.Probe, useSSL bool, budget time.Duration) ([]byte, error) {
 	// 创建连接超时上下文
-	timeout := time.Duration(s.options.Timeout) * time.Second
+	timeout := s.probeTimeout(probe)
+	if budget > 0 && budget < timeout {
+		timeout = budget
+	}
 	timeoutCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
@@ -272,6 +321,16 @@ func (s *ServiceScanner) executeTCPProbe(ctx context.Context, target *types.Scan
 		return response, ReadTimeoutError
 	}
 	return response, nil
+}
+
+// probeTimeout honors a probe's Nmap totalwaitms directive without allowing a
+// custom fingerprint to exceed the user's configured timeout.
+func (s *ServiceScanner) probeTimeout(pb *probe.Probe) time.Duration {
+	timeout := time.Duration(s.options.Timeout) * time.Second
+	if pb.TotalWaitMS > 0 && pb.TotalWaitMS < timeout {
+		return pb.TotalWaitMS
+	}
+	return timeout
 }
 
 // executeUDPProbe 执行 UDP 探针
@@ -335,6 +394,10 @@ func (s *ServiceScanner) executeUDPProbeWithRetries(ctx context.Context, target 
 }
 
 func retryProbe(ctx context.Context, retries int, run func() ([]byte, error)) ([]byte, error) {
+	return retryProbeUntil(ctx, retries, func(error) bool { return true }, run)
+}
+
+func retryProbeUntil(ctx context.Context, retries int, shouldRetry func(error) bool, run func() ([]byte, error)) ([]byte, error) {
 	if retries < 0 {
 		retries = 0
 	}
@@ -354,6 +417,9 @@ func retryProbe(ctx context.Context, retries int, run func() ([]byte, error)) ([
 		}
 		lastResponse = response
 		lastErr = err
+		if !shouldRetry(err) {
+			break
+		}
 	}
 	return lastResponse, lastErr
 }
@@ -511,3 +577,8 @@ func replaceProbeRaw(raw []byte, target *types.ScanTarget) []byte {
 	}
 	return []byte(strings.ReplaceAll(string(raw), "{Host}", fmt.Sprintf("%s:%d", host, target.Port)))
 }
+
+// normalizeSMB2Frame keeps a probe's NetBIOS session-service length and its
+// payload in agreement. SMB servers commonly reject a negotiate request when
+// bytes remain after the declared frame; this also protects hand-authored
+// service probes from accidental trailing escape sequences.

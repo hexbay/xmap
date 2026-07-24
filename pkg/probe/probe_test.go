@@ -8,6 +8,11 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+func TestParseProbeTrimsNetBIOSFrameToDeclaredLength(t *testing.T) {
+	pb := parseProbeDefinition("Probe TCP test q|\\0\\0\\0\\x04ABCDextra|")
+	assert.Equal(t, []byte{0, 0, 0, 4, 'A', 'B', 'C', 'D'}, pb.SendData)
+}
+
 func HexToBytes(h string) []byte {
 	data, _ := hex.DecodeString(h)
 	return data

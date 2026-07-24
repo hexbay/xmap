@@ -5,8 +5,10 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"github.com/hexbay/xmap/pkg/probe"
 	"github.com/hexbay/xmap/pkg/types"
 	"testing"
+	"time"
 
 	"github.com/hexbay/xmap/pkg/utils"
 	"github.com/projectdiscovery/gologger"
@@ -66,4 +68,59 @@ func TestRetryProbeStopsAfterResponse(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, []byte("ok"), response)
 	assert.Equal(t, 2, attempts)
+}
+
+func TestRetryProbeUntilDoesNotRetryReadTimeout(t *testing.T) {
+	attempts := 0
+	_, err := retryProbeUntil(context.Background(), 2, func(err error) bool {
+		return !errors.Is(err, ReadTimeoutError)
+	}, func() ([]byte, error) {
+		attempts++
+		return nil, ReadTimeoutError
+	})
+
+	assert.ErrorIs(t, err, ReadTimeoutError)
+	assert.Equal(t, 1, attempts)
+}
+
+func TestSelectProbesUsesPortSpecificProbesByDefault(t *testing.T) {
+	s := &ServiceScanner{
+		probeStore: &probe.Store{TCPProbes: []*probe.Probe{
+			{Name: "SMB", Protocol: probe.TCP, Ports: []int{445}},
+			{Name: "Generic", Protocol: probe.TCP},
+		}},
+		options: &types.Options{},
+	}
+
+	selected := s.selectProbes(probe.TCP, 445, false)
+	if assert.Len(t, selected, 1) {
+		assert.Equal(t, "SMB", selected[0].Name)
+	}
+
+	s.options.UseAllProbes = true
+	assert.Len(t, s.selectProbes(probe.TCP, 445, false), 2)
+}
+
+func TestTCPProbeSchedulerStopsAtDeadline(t *testing.T) {
+	options := types.DefaultOptions()
+	options.Timeout = 1
+	options.ServiceProbeBudget = 10
+	scheduler := newTCPProbeScheduler([]*probe.Probe{{Name: "one"}, {Name: "two"}, {Name: "three"}}, options)
+	scheduler.deadline = time.Now().Add(-time.Second)
+	_, ok := scheduler.nextProbe()
+	assert.False(t, ok)
+}
+
+func TestTCPProbeSchedulerAllowsExhaustiveMode(t *testing.T) {
+	options := types.DefaultOptions()
+	options.UseAllProbes = true
+	scheduler := newTCPProbeScheduler([]*probe.Probe{{Name: "one"}, {Name: "two"}, {Name: "three"}}, options)
+
+	for i := 0; i < 3; i++ {
+		_, ok := scheduler.nextProbe()
+		assert.True(t, ok)
+		scheduler.observe(nil, ReadTimeoutError)
+	}
+	_, ok := scheduler.nextProbe()
+	assert.False(t, ok)
 }

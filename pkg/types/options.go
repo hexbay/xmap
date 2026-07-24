@@ -26,19 +26,22 @@ type Options struct {
 
 	// scan
 	// 扫描选项
-	MaxTimeout       int
-	Timeout          int
-	Retries          int
-	HttpRetry        int
-	Threads          int
-	Limiter          Limiter
-	FastMode         bool
-	UseAllProbes     bool
-	NmapProneName    string
-	UseSSL           bool
-	VersionIntensity int
-	ServiceVersion   bool // 是否探测服务版本
-	VersionTrace     bool // 是否跟踪版本
+	MaxTimeout int
+	// ServiceProbeBudget is the maximum time spent identifying one open TCP
+	// service in normal mode. Zero selects the scanner's adaptive default.
+	ServiceProbeBudget int
+	Timeout            int
+	Retries            int
+	HttpRetry          int
+	Threads            int
+	Limiter            Limiter
+	FastMode           bool
+	UseAllProbes       bool
+	NmapProneName      string
+	UseSSL             bool
+	VersionIntensity   int
+	ServiceVersion     bool // 是否探测服务版本
+	VersionTrace       bool // 是否跟踪版本
 
 	Silent     bool // 是否启用静默模式
 	NoProgress bool // 是否不显示进度条
@@ -76,14 +79,15 @@ type Options struct {
 
 func DefaultOptions() *Options {
 	return &Options{
-		Timeout:          6,
-		MaxTimeout:       180,
-		Silent:           false,
-		NoProgress:       false,
-		OutputType:       "json",
-		Banner:           "",
-		VersionIntensity: 7,
-		MaxBodySize:      DefaultMaxBodySize,
-		MaxIconSize:      DefaultMaxIconSize,
+		Timeout:            6,
+		MaxTimeout:         180,
+		ServiceProbeBudget: 10,
+		Silent:             false,
+		NoProgress:         false,
+		OutputType:         "json",
+		Banner:             "",
+		VersionIntensity:   7,
+		MaxBodySize:        DefaultMaxBodySize,
+		MaxIconSize:        DefaultMaxIconSize,
 	}
 }

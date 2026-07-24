@@ -75,3 +75,12 @@ func TestGetProbeForPort(t *testing.T) {
 		}
 	}
 }
+
+func TestSMB2NegotiateIsPreferredForPort445(t *testing.T) {
+	store, err := GetStoreWithOptions("", 9, true)
+	assert.NoError(t, err)
+	probes := store.GetProbeForPort(TCP, 445, false)
+	if assert.NotEmpty(t, probes) {
+		assert.Equal(t, "SMB2NmapNegotiate", probes[0].Name)
+	}
+}

@@ -158,10 +158,25 @@ func parseProbeDefinition(line string) *Probe {
 			gologger.Warning().Msgf("无效的探针数据格式: %s", line)
 			return nil
 		}
-		probe.SendData = []byte(parseEscapedString(probeData[2 : end+2]))
+		probe.SendData = normalizeNetBIOSFrame([]byte(parseEscapedString(probeData[2 : end+2])))
 	}
 
 	return probe
+}
+
+// normalizeNetBIOSFrame enforces the session-service frame boundary declared
+// by a Probe. A trailing byte sequence is never a second request: it makes the
+// first SMB request malformed. Keeping this at parse time leaves transports
+// protocol-agnostic and makes the stored Probe safe to reuse.
+func normalizeNetBIOSFrame(data []byte) []byte {
+	if len(data) < 4 || data[0] != 0 || data[1]&0x80 != 0 {
+		return data
+	}
+	length := int(data[1]&0x7f)<<16 | int(data[2])<<8 | int(data[3])
+	if length > 0 && len(data) > length+4 {
+		return data[:length+4]
+	}
+	return data
 }
 
 // parsePortsDefinition 解析端口定义
