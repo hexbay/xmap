@@ -17,6 +17,12 @@ type RateLimiter interface {
 	Wait(context.Context) error
 }
 
+// ConcurrencyLimiter bounds active scans across one or more engines.
+type ConcurrencyLimiter interface {
+	Acquire(context.Context) error
+	Release()
+}
+
 // Options 包含XMap全局初始化选项
 type Options struct {
 	// target

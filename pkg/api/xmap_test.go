@@ -9,6 +9,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -497,4 +499,42 @@ func TestClosePreventsNewScans(t *testing.T) {
 	assert.NoError(t, xmapInstance.Close())
 	_, err = xmapInstance.Scan(context.Background(), types.NewTarget("127.0.0.1:1"))
 	assert.Error(t, err)
+}
+
+func TestSharedConcurrencyLimiterBoundsMultipleEngines(t *testing.T) {
+	var active int32
+	var peak int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		current := atomic.AddInt32(&active, 1)
+		for {
+			previous := atomic.LoadInt32(&peak)
+			if current <= previous || atomic.CompareAndSwapInt32(&peak, previous, current) {
+				break
+			}
+		}
+		time.Sleep(50 * time.Millisecond)
+		atomic.AddInt32(&active, -1)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	limiter := types.NewConcurrencyLimiter(1)
+	first, err := NewEngine(EngineConfig{Options: fastTestOptions(), ConcurrencyLimiter: limiter})
+	assert.NoError(t, err)
+	defer first.Close()
+	second, err := NewEngine(EngineConfig{Options: fastTestOptions(), ConcurrencyLimiter: limiter})
+	assert.NoError(t, err)
+	defer second.Close()
+
+	var wg sync.WaitGroup
+	for _, engine := range []*XMap{first, second} {
+		wg.Add(1)
+		go func(engine *XMap) {
+			defer wg.Done()
+			_, scanErr := engine.Scan(context.Background(), types.NewTarget(server.URL))
+			assert.NoError(t, scanErr)
+		}(engine)
+	}
+	wg.Wait()
+	assert.Equal(t, int32(1), atomic.LoadInt32(&peak))
 }

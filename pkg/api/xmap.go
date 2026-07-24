@@ -24,17 +24,19 @@ type XMap struct {
 	// 配置选项
 	options *types.Options
 	// 初始化锁
-	closed atomic.Bool
+	closed             atomic.Bool
+	concurrencyLimiter types.ConcurrencyLimiter
 }
 
 // EngineConfig is the sole configuration surface for embedded engines.
 // RateLimiter may be shared by multiple Engine instances to enforce one global
 // connection rate across the process.
 type EngineConfig struct {
-	Options     *types.Options
-	Transport   scanner.Transport
-	RateLimiter types.RateLimiter
-	Logger      scanner.Logger
+	Options            *types.Options
+	Transport          scanner.Transport
+	RateLimiter        types.RateLimiter
+	ConcurrencyLimiter types.ConcurrencyLimiter
+	Logger             scanner.Logger
 }
 
 func DefaultEngineConfig() EngineConfig {
@@ -56,7 +58,8 @@ func NewEngine(config EngineConfig) (*XMap, error) {
 		return nil, fmt.Errorf("engine options are required")
 	}
 	x := &XMap{
-		options: config.Options.Clone(),
+		options:            config.Options.Clone(),
+		concurrencyLimiter: config.ConcurrencyLimiter,
 	}
 	err := x.init(config)
 	return x, err
@@ -89,6 +92,12 @@ func (x *XMap) Scan(ctx context.Context, target *types.ScanTarget) (*types.ScanR
 	}
 	if target == nil {
 		return nil, fmt.Errorf("nil scan target")
+	}
+	if x.concurrencyLimiter != nil {
+		if err := x.concurrencyLimiter.Acquire(ctx); err != nil {
+			return nil, err
+		}
+		defer x.concurrencyLimiter.Release()
 	}
 	// 1. 执行服务扫描
 	if web.ShouldScan(target.Scheme) {
