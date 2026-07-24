@@ -90,10 +90,9 @@ func (ps *Store) LoadFromContent(content string) error {
 		return err
 	}
 	for _, probe := range probes {
-		// 根据版本强度过滤探针
-		if probe.Rarity <= ps.versionIntensity {
-			ps.AddProbe(probe)
-		}
+		// Keep the complete database.  Version intensity is applied at selection
+		// time, where we can retain a high-rarity probe for its declared port.
+		ps.AddProbe(probe)
 	}
 	return nil
 }
@@ -327,6 +326,16 @@ func (ps *Store) Clear() {
 
 // GetProbeForPort 获取适用于指定端口的探针列表，先按端口精确匹配度排序，再按稀有度排序
 func (ps *Store) GetProbeForPort(protocol string, port int, ssl bool) []*Probe {
+	return ps.getProbeForPort(protocol, port, ssl, false)
+}
+
+// GetAllProbesForPort returns every probe, including high-rarity generic
+// probes. It is intended for explicit exhaustive scans only.
+func (ps *Store) GetAllProbesForPort(protocol string, port int, ssl bool) []*Probe {
+	return ps.getProbeForPort(protocol, port, ssl, true)
+}
+
+func (ps *Store) getProbeForPort(protocol string, port int, ssl, includeHighRarity bool) []*Probe {
 	ps.mutex.RLock()
 	defer ps.mutex.RUnlock()
 
@@ -345,8 +354,18 @@ func (ps *Store) GetProbeForPort(protocol string, port int, ssl bool) []*Probe {
 	classifiedProbes[2] = make([]*Probe, 0) // 其他
 	// 移除调试语句
 	for _, probe := range probes {
+		// A probe explicitly assigned to this port is the strongest available
+		// evidence. Keep it even when its Nmap rarity is above the user's
+		// generic-probe intensity. Rarity still filters range and generic probes.
+		matchesExact := probe.HasExactPort(port)
 		if ssl {
-			if probe.HasExactSSLPort(port) {
+			matchesExact = probe.HasExactSSLPort(port)
+		}
+		if !includeHighRarity && !matchesExact && probe.Rarity > ps.versionIntensity {
+			continue
+		}
+		if ssl {
+			if matchesExact {
 				// 精确匹配 SSL 端口
 				classifiedProbes[0] = append(classifiedProbes[0], probe)
 			} else if probe.HasSSLPort(port) {
@@ -356,7 +375,7 @@ func (ps *Store) GetProbeForPort(protocol string, port int, ssl bool) []*Probe {
 				classifiedProbes[2] = append(classifiedProbes[2], probe)
 			}
 		} else {
-			if probe.HasExactPort(port) {
+			if matchesExact {
 				// 精确匹配普通端口
 				classifiedProbes[0] = append(classifiedProbes[0], probe)
 			} else if probe.HasPort(port) {

@@ -27,6 +27,9 @@ vendor/
 *.json
 *.csv
 results/
+reports/
+testlab-report.md
+testlab/bin/
 
 # OS specific files
 .DS_Store

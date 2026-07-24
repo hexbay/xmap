@@ -84,3 +84,27 @@ func TestSMB2NegotiateIsPreferredForPort445(t *testing.T) {
 		assert.Equal(t, "SMB2NmapNegotiate", probes[0].Name)
 	}
 }
+
+func TestHighRarityPortProbeSurvivesDefaultIntensity(t *testing.T) {
+	store := NewProbeStore(WithVersionIntensity(7))
+	err := store.LoadFromContent(`
+Probe TCP RedisInfo q|INFO\r\n|
+rarity 8
+ports 6379
+match redis m|^redis_version|
+
+Probe TCP GenericHigh q||
+rarity 8
+match generic m|^generic|
+`)
+	assert.NoError(t, err)
+
+	selected := store.GetProbeForPort(TCP, 6379, false)
+	assert.NotEmpty(t, selected)
+	for _, item := range selected {
+		assert.Equal(t, "RedisInfo", item.Name)
+	}
+
+	exhaustive := store.GetAllProbesForPort(TCP, 6379, false)
+	assert.True(t, checkSorting(exhaustive, "GenericHigh", len(exhaustive)))
+}

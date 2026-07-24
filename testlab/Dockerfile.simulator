@@ -1,0 +1,3 @@
+FROM alpine:3.21
+COPY testlab/bin/testlab-simulators /usr/local/bin/testlab-simulators
+ENTRYPOINT ["/usr/local/bin/testlab-simulators"]

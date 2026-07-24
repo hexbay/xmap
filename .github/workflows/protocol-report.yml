@@ -1,0 +1,26 @@
+name: Protocol Coverage Report
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with: { go-version: "1.23" }
+      - run: mkdir -p testlab/bin && GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -o testlab/bin/testlab-simulators ./cmd/testlab-simulators
+      - run: docker compose -f testlab/compose.yaml up -d --build --wait
+      - run: mkdir -p reports && go run ./cmd/testlab-report reports/testlab-report.md
+      - if: always()
+        run: cat reports/testlab-report.md >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: protocol-test-report, path: reports/testlab-report.md }
+      - if: always()
+        run: docker compose -f testlab/compose.yaml down -v

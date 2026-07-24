@@ -98,10 +98,10 @@ func (s *ServiceScanner) ScanWithContext(ctx context.Context, target *types.Scan
 func (s *ServiceScanner) selectProbes(protocol string, port int, ssl bool) []*probe.Probe {
 	probes := s.probeStore.GetProbeForPort(protocol, port, ssl)
 	if s.options.UseAllProbes {
-		return probes
+		probes = s.probeStore.GetAllProbesForPort(protocol, port, ssl)
 	}
-
 	preferred := make([]*probe.Probe, 0, len(probes))
+	fallback := make([]*probe.Probe, 0, len(probes))
 	for _, pb := range probes {
 		matchesPort := pb.HasExactPort(port)
 		if ssl {
@@ -109,9 +109,14 @@ func (s *ServiceScanner) selectProbes(protocol string, port int, ssl bool) []*pr
 		}
 		if matchesPort {
 			preferred = append(preferred, pb)
+		} else {
+			fallback = append(fallback, pb)
 		}
 	}
 	if len(preferred) > 0 {
+		if s.options.UseAllProbes {
+			return append(preferred, fallback...)
+		}
 		return preferred
 	}
 
