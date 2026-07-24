@@ -209,12 +209,12 @@ func GetDefaultProbeFilePath() string {
 	if path := os.Getenv("NMAP_PROBE_FILE"); path != "" {
 		return path
 	}
-	// home 目录
-	homeDir, _ := os.UserHomeDir()
-	// 然后尝试常见的位置
+	// Prefer repository-local data when developing. Production falls back to
+	// the embedded database; external databases must be explicit via
+	// NMAP_PROBE_FILE so test behavior is independent of the caller's home.
 	commonPaths := []string{
 		"nmap-service-probes",
-		homeDir + "/nmap-service-probes",
+		"pkg/probe/nmap-service-probes",
 	}
 	for _, path := range commonPaths {
 		if _, err := os.Stat(path); err == nil {

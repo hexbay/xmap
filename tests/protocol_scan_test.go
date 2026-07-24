@@ -23,9 +23,12 @@ func createXmapInstanceWithMaxTimeout(maxTimeout int) *api.XMap {
 	opt.Timeout = 1
 	opt.MaxTimeout = maxTimeout
 	opt.VersionIntensity = 9
+	// Protocol simulators use ephemeral ports. Exercise the exhaustive planner
+	// so tests validate protocol recognition rather than default-port policy.
+	opt.UseAllProbes = true
 	//opt.DebugRequest = true
 	//opt.DebugResponse = true
-	xmap, err := api.New(opt)
+	xmap, err := api.NewEngine(api.EngineConfig{Options: opt})
 	if err != nil {
 		panic(err)
 	}

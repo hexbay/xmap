@@ -206,9 +206,11 @@ func PostgreSQLServer() *TestServer {
 // RedisServer 创建一个模拟Redis服务器
 func RedisServer() *TestServer {
 	server := NewTestServer("tcp")
-	// Redis服务器响应
+	// Redis replies after receiving a command. Responding before consuming the
+	// client's request causes an occasional TCP reset on Windows when the
+	// connection closes, which made this simulator nondeterministic.
 	redisResponse := []byte("-NOAUTH Authentication required.\r\n")
-	server.AddRule(NewEmptyRequestMatcher(), NewStaticResponseHandler(redisResponse), 10)
+	server.AddRule(NewPrefixRequestMatcher([]byte("*1\r\n$4\r\ninfo\r\n")), NewStaticResponseHandler(redisResponse), 10)
 	return server
 }
 

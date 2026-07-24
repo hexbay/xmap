@@ -62,7 +62,7 @@ func main() {
 	// fast-path.  Run the complete probe set so a banner on a standard port can
 	// be matched by its generic/fallback probe as well as a port-specific one.
 	opts.UseAllProbes = true
-	x, err := api.New(opts)
+	x, err := api.NewEngine(api.EngineConfig{Options: opts})
 	if err != nil {
 		panic(err)
 	}

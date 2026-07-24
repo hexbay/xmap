@@ -84,21 +84,18 @@ func TestRetryProbeUntilDoesNotRetryReadTimeout(t *testing.T) {
 }
 
 func TestSelectProbesUsesPortSpecificProbesByDefault(t *testing.T) {
-	s := &ServiceScanner{
-		probeStore: &probe.Store{TCPProbes: []*probe.Probe{
-			{Name: "SMB", Protocol: probe.TCP, Ports: []int{445}},
-			{Name: "Generic", Protocol: probe.TCP},
-		}},
-		options: &types.Options{},
-	}
+	store := &probe.Store{TCPProbes: []*probe.Probe{
+		{Name: "SMB", Protocol: probe.TCP, Ports: []int{445}},
+		{Name: "Generic", Protocol: probe.TCP},
+	}}
+	planner := NewProbePlanner(store, false)
 
-	selected := s.selectProbes(probe.TCP, 445, false)
+	selected := planner.Plan(probe.TCP, 445, false)
 	if assert.Len(t, selected, 1) {
 		assert.Equal(t, "SMB", selected[0].Name)
 	}
 
-	s.options.UseAllProbes = true
-	assert.Len(t, s.selectProbes(probe.TCP, 445, false), 2)
+	assert.Len(t, NewProbePlanner(store, true).Plan(probe.TCP, 445, false), 2)
 }
 
 func TestTCPProbeSchedulerStopsAtDeadline(t *testing.T) {
@@ -123,4 +120,13 @@ func TestTCPProbeSchedulerAllowsExhaustiveMode(t *testing.T) {
 	}
 	_, ok := scheduler.nextProbe()
 	assert.False(t, ok)
+}
+
+func TestUDPProbeExhaustionReturnsNotMatched(t *testing.T) {
+	target := types.NewTarget("udp://127.0.0.1:53")
+	result := types.NewScanResult(target)
+	s := &ServiceScanner{options: types.DefaultOptions()}
+
+	err := s.executeUDPProbes(context.Background(), target, nil, result)
+	assert.ErrorIs(t, err, ErrNotMatched)
 }

@@ -4,22 +4,16 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
-	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 
-	"github.com/hexbay/xmap/pkg/input"
 	"github.com/hexbay/xmap/pkg/scanner"
 
 	"github.com/hexbay/xmap/pkg/types"
 	"github.com/hexbay/xmap/pkg/web"
 	"github.com/projectdiscovery/gologger"
 )
-
-// ScannerConfig 扫描器配置接口
-type ScannerConfig interface {
-	GetOptions() *types.Options
-}
 
 // XMap 是核心扫描引擎，负责协调各种扫描器
 type XMap struct {
@@ -30,63 +24,49 @@ type XMap struct {
 	// 配置选项
 	options *types.Options
 	// 初始化锁
-	initOnce sync.Once
+	closed atomic.Bool
 }
 
-type semaphoreLimiter struct {
-	sem chan struct{}
+// EngineConfig is the sole configuration surface for embedded engines.
+// RateLimiter may be shared by multiple Engine instances to enforce one global
+// connection rate across the process.
+type EngineConfig struct {
+	Options     *types.Options
+	Transport   scanner.Transport
+	RateLimiter types.RateLimiter
 }
 
-// NewLimiter creates a target-level concurrency limiter.
-func NewLimiter(limit int) types.Limiter {
-	if limit <= 0 {
-		limit = 10
+func DefaultEngineConfig() EngineConfig {
+	return EngineConfig{Options: types.DefaultOptions()}
+}
+
+// ScanEvent is emitted once for every target submitted to ScanMany.
+type ScanEvent struct {
+	Index  int
+	Target *types.ScanTarget
+	Result *types.ScanResult
+	Err    error
+}
+
+// NewEngine constructs an embeddable engine. It snapshots options so callers
+// may safely reuse or modify their own Options after construction.
+func NewEngine(config EngineConfig) (*XMap, error) {
+	if config.Options == nil {
+		return nil, fmt.Errorf("engine options are required")
 	}
-	return &semaphoreLimiter{sem: make(chan struct{}, limit)}
-}
-
-func (l *semaphoreLimiter) Acquire(ctx context.Context) error {
-	select {
-	case l.sem <- struct{}{}:
-		return nil
-	case <-ctx.Done():
-		return ctx.Err()
-	}
-}
-
-func (l *semaphoreLimiter) Release() {
-	select {
-	case <-l.sem:
-	default:
-	}
-}
-
-// New 创建新的XMap实例
-func New(options *types.Options) (*XMap, error) {
-	// 创建XMap实例
 	x := &XMap{
-		options: options,
+		options: config.Options.Clone(),
 	}
-	// 初始化扫描引擎
-	err := x.init()
+	err := x.init(config)
 	return x, err
 }
 
-// NewWithLimiter creates a new XMap instance with a shared concurrency limiter.
-func NewWithLimiter(options *types.Options, limiter types.Limiter) (*XMap, error) {
-	if options == nil {
-		options = types.DefaultOptions()
-	}
-	options.Limiter = limiter
-	return New(options)
-}
-
 // init 初始化XMap扫描引擎
-func (x *XMap) init() error {
+func (x *XMap) init(config EngineConfig) error {
 	// 使用sync.Once确保只初始化一次
 	var initErr error
 	// 创建服务扫描器
-	x.serviceScanner, initErr = scanner.NewServiceScanner(x.options)
+	x.serviceScanner, initErr = scanner.NewServiceScannerWithDependencies(x.options, config.Transport, config.RateLimiter)
 	if initErr != nil {
 		return initErr
 	}
@@ -103,6 +83,12 @@ func (x *XMap) init() error {
 
 // Scan 扫描单个目标
 func (x *XMap) Scan(ctx context.Context, target *types.ScanTarget) (*types.ScanResult, error) {
+	if x.closed.Load() {
+		return nil, fmt.Errorf("xmap engine is closed")
+	}
+	if target == nil {
+		return nil, fmt.Errorf("nil scan target")
+	}
 	// 1. 执行服务扫描
 	if web.ShouldScan(target.Scheme) {
 		// 构建URL
@@ -141,6 +127,65 @@ func (x *XMap) Scan(ctx context.Context, target *types.ScanTarget) (*types.ScanR
 	}
 
 	return result, nil
+}
+
+// Close releases resources retained by the engine. It is idempotent.
+func (x *XMap) Close() error {
+	if !x.closed.CompareAndSwap(false, true) {
+		return nil
+	}
+	if x.serviceScanner != nil {
+		return x.serviceScanner.Close()
+	}
+	return nil
+}
+
+// Config returns an independent snapshot of the engine's scan configuration.
+func (x *XMap) Config() EngineConfig {
+	return EngineConfig{Options: x.options.Clone()}
+}
+
+// ScanMany scans a finite target slice and streams one event per completed
+// target. Events may arrive out of order; Index preserves input ordering.
+func (x *XMap) ScanMany(ctx context.Context, targets []*types.ScanTarget) <-chan ScanEvent {
+	output := make(chan ScanEvent)
+	workers := x.options.Threads
+	if workers <= 0 {
+		workers = 10
+	}
+	go func() {
+		defer close(output)
+		jobs := make(chan int)
+		var wg sync.WaitGroup
+		for worker := 0; worker < workers; worker++ {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				for index := range jobs {
+					target := targets[index]
+					result, err := x.Scan(ctx, target)
+					event := ScanEvent{Index: index, Target: target, Result: result, Err: err}
+					select {
+					case output <- event:
+					case <-ctx.Done():
+						return
+					}
+				}
+			}()
+		}
+		for index := range targets {
+			select {
+			case jobs <- index:
+			case <-ctx.Done():
+				close(jobs)
+				wg.Wait()
+				return
+			}
+		}
+		close(jobs)
+		wg.Wait()
+	}()
+	return output
 }
 
 // buildTargetURL 构建目标URL
@@ -258,118 +303,20 @@ func (x *XMap) ParseTargetsString(targetsStr string) ([]*types.ScanTarget, error
 			continue
 		}
 
-		// 解析目标格式: IP:Port/Protocol
-		parts := strings.Split(line, ":")
-		if len(parts) < 1 {
-			continue
-		}
-
-		host := parts[0]
-		port := 0
-		protocol := "tcp"
-
-		if len(parts) > 1 {
-			portProto := strings.Split(parts[1], "/")
-			if len(portProto) > 0 {
-				portStr := portProto[0]
-				portInt, err := strconv.Atoi(portStr)
-				if err == nil {
-					port = portInt
-				}
-			}
-
-			if len(portProto) > 1 {
-				protocol = strings.ToLower(portProto[1])
+		// Keep the historical host:port/tcp notation while using the strict
+		// parser for URL and IPv6 correctness.
+		if slash := strings.LastIndex(line, "/"); slash > 0 && !strings.Contains(line, "://") {
+			protocol := strings.ToLower(line[slash+1:])
+			if protocol == "tcp" || protocol == "udp" {
+				line = protocol + "://" + line[:slash]
 			}
 		}
-
-		target := &types.ScanTarget{
-			Host:     host,
-			Port:     port,
-			Protocol: protocol,
+		target, err := types.ParseTarget(line)
+		if err != nil {
+			return nil, err
 		}
-
 		targets = append(targets, target)
 	}
 
 	return targets, nil
-}
-
-// ScanWithCallback 使用回调函数扫描多个目标
-// 每完成一个目标的扫描就调用回调函数，适用于需要实时处理结果的场景
-func (x *XMap) ScanWithCallback(ctx context.Context, targets input.Provider, callback func(*types.ScanResult)) error {
-	return x.ScanWithCallbackWithLimiter(ctx, targets, callback, x.options.Limiter)
-}
-
-// ScanWithCallbackWithLimiter 使用可共享的限流器扫描多个目标。
-// limiter 控制 target-level concurrency；每个 target 调用 Scan 前 acquire，完成后 release。
-func (x *XMap) ScanWithCallbackWithLimiter(ctx context.Context, targets input.Provider, callback func(*types.ScanResult), limiter types.Limiter) error {
-	// 设置默认并行数
-	if x.options.Threads <= 0 {
-		x.options.Threads = 10
-	}
-	if limiter == nil {
-		limiter = NewLimiter(x.options.Threads)
-	}
-	// 创建上下文，支持取消
-	scanCtx, cancel := context.WithCancel(ctx)
-	defer cancel()
-	var wg sync.WaitGroup
-	// 处理每个目标
-	targets.Scan(func(target *types.ScanTarget) bool {
-		if err := limiter.Acquire(scanCtx); err != nil {
-			return false
-		}
-		// 添加到等待组
-		wg.Add(1)
-		// 为每个目标启动一个goroutine
-		go func(target *types.ScanTarget) {
-			defer func() {
-				limiter.Release()
-				wg.Done()
-			}()
-			// 检查上下文是否已取消
-			if scanCtx.Err() != nil {
-				x.handleScanError(callback, target, scanCtx.Err())
-				return
-			}
-			// 执行扫描
-			result, err := x.Scan(scanCtx, target)
-			if err != nil {
-				if result != nil {
-					if callback != nil {
-						callback(result)
-					}
-					return
-				}
-				x.handleScanError(callback, target, err)
-				return
-			}
-			// 调用回调函数
-			if callback != nil {
-				callback(result)
-			}
-		}(target)
-
-		return true // 继续处理下一个目标
-	})
-
-	// 等待所有扫描完成
-	wg.Wait()
-	return scanCtx.Err()
-}
-
-// handleScanError 处理扫描错误
-func (x *XMap) handleScanError(callback func(*types.ScanResult), target *types.ScanTarget, err error) {
-	if callback != nil {
-		callback(&types.ScanResult{
-			Target: target,
-			Error:  err,
-		})
-	}
-}
-
-// GetOptions 获取选项
-func (x *XMap) GetOptions() *types.Options {
-	return x.options
 }

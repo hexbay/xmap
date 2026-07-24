@@ -4,14 +4,11 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"github.com/hexbay/xmap/pkg/input"
 	"github.com/hexbay/xmap/testutils"
 	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
-	"sync"
-	"sync/atomic"
 	"testing"
 	"time"
 
@@ -23,11 +20,15 @@ import (
 
 func createXmap() *XMap {
 	opts := types.DefaultOptions()
-	xmap, err := New(opts)
+	xmap, err := newEngine(opts)
 	if err != nil {
 		panic(err)
 	}
 	return xmap
+}
+
+func newEngine(options *types.Options) (*XMap, error) {
+	return NewEngine(EngineConfig{Options: options})
 }
 
 func fastTestOptions() *types.Options {
@@ -199,7 +200,7 @@ func TestProtocolDetection(t *testing.T) {
 	}
 
 	// 初始化XMap扫描器
-	xmapInstance, err := New(timeoutTestOptions())
+	xmapInstance, err := newEngine(timeoutTestOptions())
 	assert.NoError(t, err)
 	assert.NotNil(t, xmapInstance, "初始化XMap实例失败")
 	// 运行测试用例
@@ -336,7 +337,7 @@ func TestSSHScan(t *testing.T) {
 	assert.NoError(t, err, "启动测试服务器失败")
 	defer server.Stop()
 	// 创建XMap实例
-	xmapInstance, err := New(fastTestOptions())
+	xmapInstance, err := newEngine(fastTestOptions())
 	assert.NoError(t, err)
 	assert.NotNil(t, xmapInstance, "初始化XMap实例失败")
 	ctx := context.Background()
@@ -357,7 +358,7 @@ func TestHTTPScan(t *testing.T) {
 	defer server.Close()
 	gologger.DefaultLogger.SetMaxLevel(levels.LevelDebug)
 	// 创建XMap实例
-	xmapInstance, err := New(fastTestOptions())
+	xmapInstance, err := newEngine(fastTestOptions())
 	assert.NoError(t, err)
 	assert.NotNil(t, xmapInstance, "初始化XMap实例失败")
 	ctx := context.Background()
@@ -379,7 +380,7 @@ func TestTimeoutScan(t *testing.T) {
 
 	// 创建XMap实例
 	// 创建XMap实例
-	xmapInstance, err := New(fastTestOptions())
+	xmapInstance, err := newEngine(fastTestOptions())
 	assert.NoError(t, err)
 	assert.NotNil(t, xmapInstance, "初始化XMap实例失败")
 	ctx := context.Background()
@@ -395,7 +396,7 @@ func TestRemoteWaf(t *testing.T) {
 	// 创建XMap实例
 	gologger.DefaultLogger.SetMaxLevel(levels.LevelDebug)
 	// 创建XMap实例
-	xmapInstance, err := New(types.DefaultOptions())
+	xmapInstance, err := newEngine(types.DefaultOptions())
 	assert.NoError(t, err)
 	assert.NotNil(t, xmapInstance, "初始化XMap实例失败")
 	ctx := context.Background()
@@ -411,7 +412,7 @@ func TestScanWithWaf(t *testing.T) {
 	// 创建XMap实例
 	gologger.DefaultLogger.SetMaxLevel(levels.LevelDebug)
 	// 创建XMap实例
-	xmapInstance, err := New(types.DefaultOptions())
+	xmapInstance, err := newEngine(types.DefaultOptions())
 	assert.NoError(t, err)
 	assert.NotNil(t, xmapInstance, "初始化XMap实例失败")
 	ctx := context.Background()
@@ -431,7 +432,7 @@ func TestScanHttps(t *testing.T) {
 	// 创建XMap实例
 	gologger.DefaultLogger.SetMaxLevel(levels.LevelDebug)
 	// 创建XMap实例
-	xmapInstance, err := New(types.DefaultOptions())
+	xmapInstance, err := newEngine(types.DefaultOptions())
 	assert.NoError(t, err)
 	assert.NotNil(t, xmapInstance, "初始化XMap实例失败")
 	ctx := context.Background()
@@ -444,7 +445,7 @@ func TestScanHttps(t *testing.T) {
 
 func BenchmarkNewXmap(b *testing.B) {
 	for i := 0; i < b.N; i++ {
-		_, _ = New(types.DefaultOptions())
+		_, _ = newEngine(types.DefaultOptions())
 	}
 }
 
@@ -457,111 +458,43 @@ func TestParseCertificateMessage(t *testing.T) {
 	println(result.Certificate)
 }
 
-type blockingLimiter struct {
-	acquired chan struct{}
-	released chan struct{}
-}
-
-func (l *blockingLimiter) Acquire(ctx context.Context) error {
-	select {
-	case l.acquired <- struct{}{}:
-	default:
-	}
-	return nil
-}
-
-func (l *blockingLimiter) Release() {
-	close(l.released)
-}
-
-func TestScanWithCallbackWithLimiterSharesTargetConcurrency(t *testing.T) {
-	var inFlight int32
-	var maxInFlight int32
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		current := atomic.AddInt32(&inFlight, 1)
-		for {
-			max := atomic.LoadInt32(&maxInFlight)
-			if current <= max || atomic.CompareAndSwapInt32(&maxInFlight, max, current) {
-				break
-			}
-		}
-		time.Sleep(100 * time.Millisecond)
-		atomic.AddInt32(&inFlight, -1)
-		w.WriteHeader(http.StatusOK)
-	}))
-	defer server.Close()
-
-	limiter := NewLimiter(2)
-	xmapInstance, err := NewWithLimiter(types.DefaultOptions(), limiter)
-	assert.NoError(t, err)
-
-	providers := make([]input.Provider, 4)
-	for i := range providers {
-		providers[i] = input.FromSliceString([]string{server.URL, server.URL, server.URL})
-	}
-
-	var wg sync.WaitGroup
-	for _, provider := range providers {
-		wg.Add(1)
-		go func(provider input.Provider) {
-			defer wg.Done()
-			err := xmapInstance.ScanWithCallback(context.Background(), provider, func(result *types.ScanResult) {
-				assert.NotNil(t, result)
-			})
-			assert.NoError(t, err)
-		}(provider)
-	}
-	wg.Wait()
-
-	assert.LessOrEqual(t, atomic.LoadInt32(&maxInFlight), int32(2))
-}
-
-func TestScanWithCallbackPreservesPartialResultOnWebError(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		time.Sleep(1500 * time.Millisecond)
-		w.WriteHeader(http.StatusOK)
-	}))
-	defer server.Close()
-
+func TestNewSnapshotsCallerOptions(t *testing.T) {
 	options := types.DefaultOptions()
-	options.Timeout = 1
-	xmapInstance, err := New(options)
+	options.Threads = 2
+	xmapInstance, err := newEngine(options)
 	assert.NoError(t, err)
+	defer xmapInstance.Close()
 
-	var result *types.ScanResult
-	err = xmapInstance.ScanWithCallback(context.Background(), input.FromSliceString([]string{server.URL}), func(scanResult *types.ScanResult) {
-		result = scanResult
-	})
-	assert.NoError(t, err)
-	assert.NotNil(t, result)
-	assert.Error(t, result.Error)
-	assert.Equal(t, "http", result.Service)
-	assert.GreaterOrEqual(t, result.Duration, 1.0)
+	options.Threads = 99
+	assert.Equal(t, 2, xmapInstance.Config().Options.Threads)
 }
 
-func TestScanWithCallbackWithLimiterReleasesTokenOnCanceledScan(t *testing.T) {
-	limiter := &blockingLimiter{
-		acquired: make(chan struct{}, 1),
-		released: make(chan struct{}),
-	}
-	xmapInstance, err := NewWithLimiter(types.DefaultOptions(), limiter)
+func TestScanManyStreamsOneEventPerTarget(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	options := fastTestOptions()
+	options.Threads = 2
+	xmapInstance, err := newEngine(options)
 	assert.NoError(t, err)
+	defer xmapInstance.Close()
 
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
-	provider := input.FromSliceString([]string{"127.0.0.1:1"})
+	targets := []*types.ScanTarget{types.NewTarget(server.URL), types.NewTarget(server.URL)}
+	seen := make(map[int]bool)
+	for event := range xmapInstance.ScanMany(context.Background(), targets) {
+		assert.NoError(t, event.Err)
+		assert.NotNil(t, event.Result)
+		seen[event.Index] = true
+	}
+	assert.Equal(t, map[int]bool{0: true, 1: true}, seen)
+}
 
-	err = xmapInstance.ScanWithCallback(ctx, provider, nil)
+func TestClosePreventsNewScans(t *testing.T) {
+	xmapInstance, err := newEngine(types.DefaultOptions())
+	assert.NoError(t, err)
+	assert.NoError(t, xmapInstance.Close())
+	_, err = xmapInstance.Scan(context.Background(), types.NewTarget("127.0.0.1:1"))
 	assert.Error(t, err)
-
-	select {
-	case <-limiter.acquired:
-	case <-time.After(time.Second):
-		t.Fatal("expected limiter acquire")
-	}
-	select {
-	case <-limiter.released:
-	case <-time.After(time.Second):
-		t.Fatal("expected limiter release after canceled scan")
-	}
 }

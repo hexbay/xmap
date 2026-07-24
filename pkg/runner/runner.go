@@ -28,7 +28,7 @@ func New(options *types.Options) (*Runner, error) {
 	configureLogger(options)
 
 	// 创建 XMap 实例
-	xmapInstance, err := api.New(options)
+	xmapInstance, err := api.NewEngine(api.EngineConfig{Options: options})
 	if err != nil {
 		return nil, err
 	}
@@ -85,20 +85,22 @@ func (r *Runner) RunEnumeration() error {
 	if err != nil {
 		return fmt.Errorf("create input provider failed: %v", err)
 	}
-	// 执行扫描
-	scanErr := r.xmap.ScanWithCallback(ctx, inputProvider,
-		// 结果回调 - 每当有一个结果就立即输出
-		func(result *types.ScanResult) {
-			// 更新进度
-			if progressTracker != nil {
-				progressTracker.Increment()
-			}
-			// 处理输出
-			outputHandler.HandleResult(result)
-		},
-	)
-	if scanErr != nil {
-		return fmt.Errorf("扫描失败: %v", scanErr)
+	var targets []*types.ScanTarget
+	inputProvider.Scan(func(target *types.ScanTarget) bool {
+		targets = append(targets, target)
+		return true
+	})
+	for event := range r.xmap.ScanMany(ctx, targets) {
+		if event.Result == nil {
+			continue
+		}
+		if progressTracker != nil {
+			progressTracker.Increment()
+		}
+		outputHandler.HandleResult(event.Result)
+	}
+	if err := ctx.Err(); err != nil {
+		return fmt.Errorf("扫描失败: %w", err)
 	}
 	return nil
 }

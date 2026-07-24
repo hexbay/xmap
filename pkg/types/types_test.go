@@ -1,8 +1,41 @@
 package types
 
 import (
+	"encoding/json"
+	"errors"
+	"strings"
 	"testing"
 )
+
+func TestParseTargetSupportsIPv6AndURLs(t *testing.T) {
+	target, err := ParseTarget("tcp://[2001:db8::1]:8443")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if target.Host != "2001:db8::1" || target.IP != "2001:db8::1" || target.Port != 8443 || target.Protocol != "tcp" {
+		t.Fatalf("unexpected IPv6 target: %#v", target)
+	}
+
+	target, err = ParseTarget("https://[2001:db8::2]/health")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if target.Port != 443 || target.Path != "/health" || target.Scheme != "https" {
+		t.Fatalf("unexpected URL target: %#v", target)
+	}
+}
+
+func TestScanResultJSONUsesStableErrorFields(t *testing.T) {
+	result := NewScanResult(NewTarget("127.0.0.1:1"))
+	result.Complete(errors.New("not matched"))
+	data, err := json.Marshal(result)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(data) == "{}" || !strings.Contains(string(data), "error_message") {
+		t.Fatalf("missing structured error fields: %s", data)
+	}
+}
 
 func TestNewTarget(t *testing.T) {
 	tests := []struct {
@@ -178,7 +211,7 @@ func TestNewTarget(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got := NewTarget(tt.raw)
-			
+
 			if got.Raw != tt.expected.Raw {
 				t.Errorf("Raw = %v, want %v", got.Raw, tt.expected.Raw)
 			}

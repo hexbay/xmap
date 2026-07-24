@@ -4,15 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
-	"net"
 	"strings"
 	"time"
 
 	"github.com/hexbay/xmap/pkg/probe"
 	"github.com/hexbay/xmap/pkg/types"
 	"github.com/hexbay/xmap/pkg/utils"
-	"github.com/projectdiscovery/fastdialer/fastdialer"
 	"github.com/projectdiscovery/gologger"
 )
 
@@ -20,26 +17,48 @@ import (
 type ServiceScanner struct {
 	// 版本强度
 	probeStore *probe.Store
-	dialer     *fastdialer.Dialer
+	transport  Transport
 	options    *types.Options
 }
 
 // NewServiceScanner 创建新的扫描器
 func NewServiceScanner(options *types.Options) (*ServiceScanner, error) {
+	return NewServiceScannerWithDependencies(options, nil, nil)
+}
+
+// NewServiceScannerWithDependencies is the composition root for scanner I/O.
+func NewServiceScannerWithDependencies(options *types.Options, transport Transport, limiter types.RateLimiter) (*ServiceScanner, error) {
 	// 创建默认选项
 	probeStore, err := probe.GetStoreWithOptions(options.NmapProneName, options.VersionIntensity, false)
 	if err != nil {
 		return nil, fmt.Errorf("create probe store failed: %v", err)
 	}
-	dialer, err := fastdialer.NewDialer(fastdialer.DefaultOptions)
-	if err != nil {
-		return nil, fmt.Errorf("create dialer failed: %v", err)
+	if transport == nil {
+		transport, err = newDialerTransport()
+		if err != nil {
+			return nil, fmt.Errorf("create dialer failed: %w", err)
+		}
 	}
+	transport = NewRateLimitedTransport(transport, limiter)
 	return &ServiceScanner{
 		probeStore: probeStore,
-		dialer:     dialer,
+		transport:  transport,
 		options:    options,
 	}, nil
+}
+
+// NewServiceScannerWithTransport constructs a scanner with a caller-owned
+// transport. This supports custom DNS, proxies, network namespaces and test
+// harnesses without exposing scanner internals.
+func NewServiceScannerWithTransport(options *types.Options, transport Transport) (*ServiceScanner, error) {
+	return NewServiceScannerWithDependencies(options, transport, nil)
+}
+
+func (s *ServiceScanner) Close() error {
+	if transport, ok := s.transport.(ClosableTransport); ok {
+		return transport.Close()
+	}
+	return nil
 }
 
 // Scan 扫描单个目标
@@ -78,51 +97,21 @@ func (s *ServiceScanner) ScanWithContext(ctx context.Context, target *types.Scan
 			gologger.Debug().Msgf("parse certificates from server hello success: %v", certInfo)
 		}
 		probes = s.selectProbes(target.Protocol, target.Port, true)
-		err = s.executeProbes(ctx, target, probes, true, result)
-		if err != nil {
-			gologger.Debug().Msgf("SSL scan failed: %v", err)
+		if tlsErr := s.executeProbes(ctx, target, probes, true, result); tlsErr != nil {
+			gologger.Debug().Msgf("SSL inner-service scan failed: %v", tlsErr)
+			// A successful TLS outer-layer fingerprint remains a valid result even
+			// when the encrypted application protocol cannot be identified.
+			err = nil
 		}
 	}
 	result.Complete(err)
 	return result, err
 }
 
-// selectProbes implements the same high-level selection rule used by Nmap
-// version detection: port-specific probes are preferred, while generic probes
-// are a fallback for ports without a dedicated probe.  Trying every generic
-// protocol after a silent port-specific probe turns one closed conversation
-// into minutes of read timeouts.
-//
-// --all-probes deliberately bypasses this guard for users who need exhaustive
-// fingerprinting despite the additional time and traffic.
+// selectProbes keeps the scanner-facing compatibility wrapper around the pure
+// planning component.
 func (s *ServiceScanner) selectProbes(protocol string, port int, ssl bool) []*probe.Probe {
-	probes := s.probeStore.GetProbeForPort(protocol, port, ssl)
-	if s.options.UseAllProbes {
-		probes = s.probeStore.GetAllProbesForPort(protocol, port, ssl)
-	}
-	preferred := make([]*probe.Probe, 0, len(probes))
-	fallback := make([]*probe.Probe, 0, len(probes))
-	for _, pb := range probes {
-		matchesPort := pb.HasExactPort(port)
-		if ssl {
-			matchesPort = pb.HasExactSSLPort(port)
-		}
-		if matchesPort {
-			preferred = append(preferred, pb)
-		} else {
-			fallback = append(fallback, pb)
-		}
-	}
-	if len(preferred) > 0 {
-		if s.options.UseAllProbes {
-			return append(preferred, fallback...)
-		}
-		return preferred
-	}
-
-	// No port-specific signature exists. Keep the sorted generic list so
-	// uncommon ports can still be identified.
-	return probes
+	return NewProbePlanner(s.probeStore, s.options.UseAllProbes).Plan(protocol, port, ssl)
 }
 
 // executeProbes 执行探针扫描
@@ -141,7 +130,7 @@ func (s *ServiceScanner) executeUDPProbes(ctx context.Context, target *types.Sca
 	// 对每个探针执行扫描
 	observer := NewPortObserverEntry(target)
 	for _, pb := range probes {
-		if ext, reason := observer.IsTerminate(); ext {
+		if ext, reason := observer.IsTerminate(); ext && !s.options.UseAllProbes {
 			return errors.New(reason)
 		}
 		// 检查上下文是否已取消
@@ -153,7 +142,7 @@ func (s *ServiceScanner) executeUDPProbes(ctx context.Context, target *types.Sca
 		}
 		// 执行 UDP 探针
 		// UDP 不支持 SSL/TLS
-		response, err := s.executeUDPProbeWithRetries(ctx, target, pb)
+		response, err := s.executeUDPProbeWithRetries(ctx, target, pb, result)
 		observer.watch(response, err)
 		if s.options.DebugResponse && len(response) > 0 {
 			gologger.Print().Msgf("Read (%d bytes) for UDP probe %s on %s:%d:\n%s", len(response), pb.Name, target.IP, target.Port, formatProbeData(response))
@@ -189,7 +178,7 @@ func (s *ServiceScanner) executeUDPProbes(ctx context.Context, target *types.Sca
 			}
 		}
 	}
-	return nil
+	return ErrNotMatched
 }
 
 // executeTCPProbes 执行 TCP 探针扫描
@@ -203,7 +192,7 @@ func (s *ServiceScanner) executeTCPProbes(ctx context.Context, target *types.Sca
 			break
 		}
 		// 处理错误
-		if ext, reason := observer.IsTerminate(); ext {
+		if ext, reason := observer.IsTerminate(); ext && !s.options.UseAllProbes {
 			return errors.New(reason)
 		}
 		// 检查上下文是否已取消
@@ -214,7 +203,7 @@ func (s *ServiceScanner) executeTCPProbes(ctx context.Context, target *types.Sca
 			// 继续处理
 		}
 		// 执行 TCP 探针
-		response, err := s.executeTCPProbeWithRetries(ctx, target, pb, useSSL, scheduler.remaining())
+		response, err := s.executeTCPProbeWithRetries(ctx, target, pb, useSSL, scheduler.remaining(), result)
 		observer.watch(response, err)
 		scheduler.observe(response, err)
 		if s.options.DebugResponse && len(response) > 0 {
@@ -249,10 +238,10 @@ func (s *ServiceScanner) executeTCPProbes(ctx context.Context, target *types.Sca
 		}
 	}
 	// 如果没有匹配到任何服务
-	return errors.New("not matched")
+	return ErrNotMatched
 }
 
-func (s *ServiceScanner) executeTCPProbeWithRetries(ctx context.Context, target *types.ScanTarget, probe *probe.Probe, useSSL bool, budget time.Duration) ([]byte, error) {
+func (s *ServiceScanner) executeTCPProbeWithRetries(ctx context.Context, target *types.ScanTarget, probe *probe.Probe, useSSL bool, budget time.Duration, result *types.ScanResult) ([]byte, error) {
 	// A TCP read timeout means the peer accepted the connection but chose not
 	// to speak this protocol. Repeating the identical payload is almost never
 	// useful and was the source of 5s * (retries + 1) stalls per probe. Keep
@@ -261,12 +250,12 @@ func (s *ServiceScanner) executeTCPProbeWithRetries(ctx context.Context, target 
 	return retryProbeUntil(ctx, s.options.Retries, func(err error) bool {
 		return !errors.Is(err, ReadTimeoutError)
 	}, func() ([]byte, error) {
-		return s.executeTCPProbe(ctx, target, probe, useSSL, budget)
+		return s.executeTCPProbe(ctx, target, probe, useSSL, budget, result)
 	})
 }
 
 // executeTCPProbe 执行 tcp 探针
-func (s *ServiceScanner) executeTCPProbe(ctx context.Context, target *types.ScanTarget, probe *probe.Probe, useSSL bool, budget time.Duration) ([]byte, error) {
+func (s *ServiceScanner) executeTCPProbe(ctx context.Context, target *types.ScanTarget, probe *probe.Probe, useSSL bool, budget time.Duration, result *types.ScanResult) ([]byte, error) {
 	// 创建连接超时上下文
 	timeout := s.probeTimeout(probe)
 	if budget > 0 && budget < timeout {
@@ -276,16 +265,15 @@ func (s *ServiceScanner) executeTCPProbe(ctx context.Context, target *types.Scan
 	defer cancel()
 
 	// 创建 TCP 连接
-	conn, err := s.createConnection(timeoutCtx, target, useSSL, timeout)
+	conn, err := s.transport.Open(timeoutCtx, target, useSSL, timeout)
 	if err != nil {
 		return nil, ConnectionError
 	}
 	defer conn.Close()
-
-	_ = conn.SetDeadline(time.Now().Add(timeout))
+	s.setResolvedIP(result, conn)
 
 	raw := replaceProbeRaw(probe.SendData, target)
-	_, err = conn.Write(raw)
+	_, err = conn.Write(raw, WritePolicy{Timeout: timeout})
 	if s.options.DebugRequest {
 		gologger.Print().Msgf("Dump TCP Request For %s probe %s\n%s", target.String(), probe.Name, formatProbeData(raw))
 	}
@@ -299,23 +287,7 @@ func (s *ServiceScanner) executeTCPProbe(ctx context.Context, target *types.Scan
 		gologger.Debug().Msgf("TCP write failed for [%s:%d]: %v", target.IP, target.Port, err)
 		return nil, WriteDataError
 	}
-	response, err := s.readResponse(conn, timeout)
-
-	// 检查是否是 SSL 探针
-	isSSLProbe := strings.Contains(strings.ToLower(probe.Name), "ssl") || strings.Contains(strings.ToLower(probe.Name), "tls")
-
-	// 如果是 SSL 探针且有响应数据，尝试直接从响应中解析证书
-	if isSSLProbe && len(response) > 0 {
-		// 尝试从响应数据中解析证书
-		certInfo, certErr := utils.ParseCertificatesFromServerHello(response)
-		if certErr == nil && certInfo != nil {
-			// 如果成功解析到证书信息，将其保存到目标对象中
-			// 将结构化证书信息保存到目标对象中
-			target.Certificate = certInfo.CertInfo
-			// 将可读性信息临时存储，稍后会在 executeTCPProbes 中将其添加到 result.Extra
-			gologger.Debug().Msgf("成功从 SSL 探针响应数据中直接解析证书信息")
-		}
-	}
+	response, err := conn.Read(ReadPolicy{OverallTimeout: timeout, IdleTimeout: 50 * time.Millisecond, MaxBytes: 4096})
 
 	if len(response) > 0 {
 		return response, nil
@@ -323,7 +295,7 @@ func (s *ServiceScanner) executeTCPProbe(ctx context.Context, target *types.Scan
 
 	if err != nil {
 		gologger.Debug().Msgf("TCP read failed for [%s:%d]: %v", target.Host, target.Port, err)
-		return response, ReadTimeoutError
+		return response, classifyReadError(err)
 	}
 	return response, nil
 }
@@ -339,35 +311,22 @@ func (s *ServiceScanner) probeTimeout(pb *probe.Probe) time.Duration {
 }
 
 // executeUDPProbe 执行 UDP 探针
-func (s *ServiceScanner) executeUDPProbe(ctx context.Context, target *types.ScanTarget, probe *probe.Probe) ([]byte, error) {
+func (s *ServiceScanner) executeUDPProbe(ctx context.Context, target *types.ScanTarget, probe *probe.Probe, result *types.ScanResult) ([]byte, error) {
 	// 创建连接超时上下文
 	timeout := time.Duration(s.options.Timeout) * time.Second
 	timeoutCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	// 创建 UDP 连接（UDP 不支持 SSL/TLS）
-	conn, err := s.createConnection(timeoutCtx, target, false, timeout)
+	conn, err := s.transport.Open(timeoutCtx, target, false, timeout)
 	if err != nil {
 		return nil, err
 	}
 	defer conn.Close()
-
-	// 从 UDP 连接中获取实际的远程 IP 地址
-	if udpConn, ok := conn.(*net.UDPConn); ok {
-		if remoteAddr, ok := udpConn.RemoteAddr().(*net.UDPAddr); ok {
-			resolvedIP := remoteAddr.IP.String()
-			if target.IP == "" {
-				target.IP = resolvedIP
-				gologger.Debug().Msgf("%s:%d", resolvedIP, target.Port)
-			}
-		}
-	}
-
-	// 设置读写超时（UDP 需要更短的超时，因为它是无连接的）
-	_ = conn.SetDeadline(time.Now().Add(timeout / 2))
+	s.setResolvedIP(result, conn)
 
 	// 发送探针数据
 	raw := replaceProbeRaw(probe.SendData, target)
-	_, err = conn.Write(raw)
+	_, err = conn.Write(raw, WritePolicy{Timeout: timeout / 2})
 	if s.options.DebugRequest {
 		gologger.Print().Msgf("Dump UDP Request For %s probe %s\n%s", target.String(), probe.Name, formatProbeData(raw))
 	}
@@ -379,23 +338,29 @@ func (s *ServiceScanner) executeUDPProbe(ctx context.Context, target *types.Scan
 	}
 
 	// 读取响应（UDP 可能不会有响应，所以要特别处理）
-	response, err := s.readResponse(conn, timeout/2)
+	response, err := conn.Read(ReadPolicy{OverallTimeout: timeout / 2, MaxBytes: 4096, SingleRead: true})
 
 	if len(response) > 0 {
 		return response, nil
 	}
 
 	if err != nil {
-		return response, err
+		return response, classifyReadError(err)
 	}
 
 	return response, nil
 }
 
-func (s *ServiceScanner) executeUDPProbeWithRetries(ctx context.Context, target *types.ScanTarget, probe *probe.Probe) ([]byte, error) {
+func (s *ServiceScanner) executeUDPProbeWithRetries(ctx context.Context, target *types.ScanTarget, probe *probe.Probe, result *types.ScanResult) ([]byte, error) {
 	return retryProbe(ctx, s.options.Retries, func() ([]byte, error) {
-		return s.executeUDPProbe(ctx, target, probe)
+		return s.executeUDPProbe(ctx, target, probe, result)
 	})
+}
+
+func (s *ServiceScanner) setResolvedIP(result *types.ScanResult, conn Session) {
+	if result.IP == "" {
+		result.IP = conn.RemoteIP()
+	}
 }
 
 func retryProbe(ctx context.Context, retries int, run func() ([]byte, error)) ([]byte, error) {
@@ -427,115 +392,6 @@ func retryProbeUntil(ctx context.Context, retries int, shouldRetry func(error) b
 		}
 	}
 	return lastResponse, lastErr
-}
-
-// createConnection 创建网络连接
-func (s *ServiceScanner) createConnection(ctx context.Context, target *types.ScanTarget, useSSL bool, timeout time.Duration) (net.Conn, error) {
-	host := target.Host
-	if host == "" {
-		host = target.IP
-	}
-	address := fmt.Sprintf("%s:%d", host, target.Port)
-	// 使用fastdialer处理连接
-	var conn net.Conn
-	var err error
-	// 根据协议类型创建不同类型的连接
-	var network string
-	switch target.Protocol {
-	case "udp":
-		network = "udp"
-	default:
-		network = "tcp" // 默认使用 TCP
-	}
-	// 设置超时上下文
-	dialCtx, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
-	// 检查是否需要 TLS 连接
-	if useSSL {
-		// 使用fastdialer的DialTLS方法进行TLS连接
-		conn, err = s.dialer.DialTLS(dialCtx, network, address)
-		if err != nil {
-			return nil, err
-		}
-		// todo 获取证书
-		// 获取目标IP
-		if target.IP == "" && target.Host != "" {
-			dnsData, err := s.dialer.GetDNSData(target.Host)
-			if err == nil && dnsData != nil && len(dnsData.A) > 0 {
-				target.IP = dnsData.A[0]
-			}
-		}
-		return conn, nil
-	}
-
-	// 普通连接（TCP 或 UDP）
-	conn, err = s.dialer.Dial(dialCtx, network, address)
-	if err != nil {
-		return nil, err
-	}
-
-	// 获取目标IP
-	if target.IP == "" && target.Host != "" {
-		dnsData, err := s.dialer.GetDNSData(target.Host)
-		if err == nil && dnsData != nil && len(dnsData.A) > 0 {
-			target.IP = dnsData.A[0]
-			gologger.Debug().Msgf("Resolved %s IP %s", target.Host, target.IP)
-		} else {
-			// 如果无法从 DNS 获取数据，尝试从连接中获取
-			if remoteAddr, ok := conn.RemoteAddr().(*net.TCPAddr); ok {
-				target.IP = remoteAddr.IP.String()
-				gologger.Debug().Msgf("从连接获取IP: %s", target.IP)
-			}
-		}
-	}
-
-	return conn, nil
-}
-
-// readResponse 从连接中读取响应数据
-func (s *ServiceScanner) readResponse(conn net.Conn, timeout time.Duration) ([]byte, error) {
-	var responseData []byte
-	buffer := make([]byte, 1024)
-	// 设置最大读取时间
-	maxReadTime := time.Now().Add(timeout)
-	for {
-		// 检查是否超过最大读取时间
-		if time.Now().After(maxReadTime) {
-			// 如果已经读取到了一些数据，则返回这些数据
-			if len(responseData) > 0 {
-				return responseData, nil
-			}
-			// 否则返回超时错误
-			return responseData, fmt.Errorf(fmt.Sprintf("max read timeout: %s", timeout.String()))
-		}
-		// 设置单次读取超时
-		remainingTime := maxReadTime.Sub(time.Now())
-		if remainingTime <= 0 {
-			remainingTime = 2 * time.Second // 最小超时时间
-		}
-		_ = conn.SetReadDeadline(time.Now().Add(remainingTime))
-		// 读取数据
-		n, err := conn.Read(buffer)
-		// 如果读取到数据，追加到响应中
-		if n > 0 {
-			responseData = append(responseData, buffer[:n]...)
-			// 如果缓冲区未满，可能表示数据已经读取完毕
-			if n < len(buffer) {
-				break
-			}
-			// 如果响应数据已经足够大，停止读取
-			if len(responseData) >= 4096 {
-				break
-			}
-		}
-		// 处理错误
-		if err != nil {
-			if errors.Is(err, io.EOF) {
-				return responseData, err
-			}
-		}
-	}
-	return responseData, nil
 }
 
 // formatProbeData 格式化探针数据以便于日志输出

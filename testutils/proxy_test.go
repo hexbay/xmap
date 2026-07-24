@@ -143,7 +143,7 @@ func TestProxyConnection(t *testing.T) {
 				options.Proxy = proxyServer.URL
 			}
 
-			xmapInstance, err := api.New(options)
+			xmapInstance, err := api.NewEngine(api.EngineConfig{Options: options})
 			assert.NoError(t, err, "初始化XMap实例失败")
 			assert.NotNil(t, xmapInstance, "初始化XMap实例失败")
 
@@ -202,7 +202,7 @@ func TestProxyTimeout(t *testing.T) {
 	options.MaxTimeout = 2
 	options.Retries = 0 // 不重试
 	options.Proxy = proxyServer.URL
-	xmapInstance, err := api.New(options)
+	xmapInstance, err := api.NewEngine(api.EngineConfig{Options: options})
 	assert.NoError(t, err, "初始化XMap实例失败")
 	assert.NotNil(t, xmapInstance, "初始化XMap实例失败")
 
@@ -245,7 +245,7 @@ func TestInvalidProxy(t *testing.T) {
 	options.Timeout = 2
 	options.Retries = 0
 	options.Proxy = invalidProxyURL
-	xmapInstance, err := api.New(options)
+	xmapInstance, err := api.NewEngine(api.EngineConfig{Options: options})
 	assert.NoError(t, err, "初始化XMap实例失败")
 	assert.NotNil(t, xmapInstance, "初始化XMap实例失败")
 

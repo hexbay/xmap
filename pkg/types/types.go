@@ -1,10 +1,13 @@
 package types
 
 import (
+	"context"
 	"crypto/x509"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -22,6 +25,27 @@ const (
 	StatusInvalid    // 无效目标（如连续多次连接失败）
 	StatusFirewalled // 可能被防火墙阻止
 )
+
+func (s ScanStatus) String() string {
+	switch s {
+	case StatusMatched:
+		return "matched"
+	case StatusNoMatch:
+		return "no_match"
+	case StatusError:
+		return "error"
+	case StatusClosed:
+		return "closed"
+	case StatusInvalid:
+		return "invalid"
+	case StatusFirewalled:
+		return "firewalled"
+	default:
+		return "unknown"
+	}
+}
+
+func (s ScanStatus) MarshalJSON() ([]byte, error) { return json.Marshal(s.String()) }
 
 // ScanTarget 表示扫描目标
 type ScanTarget struct {
@@ -44,87 +68,73 @@ type ScanTarget struct {
 }
 
 func NewTarget(raw string) *ScanTarget {
-	// 判断目标类型
-	/*
-		IP:PORT
-		DOMAIN:PORT
-		scheme://DOMAIN:PORT
-		scheme://IP:PORT
-		udp://DOMAIN:PORT
-		tcp://DOMAIN:PORT
-	*/
-	target := &ScanTarget{
-		Raw:      raw,
-		Protocol: "tcp", // 默认协议为TCP
+	target, err := ParseTarget(raw)
+	if err == nil {
+		return target
 	}
-	// 检查是否包含协议前缀
-	if parts := strings.Split(raw, "://"); len(parts) > 1 {
-		scheme := strings.ToLower(parts[0])
-		host := parts[1]
-		// 处理协议
-		switch scheme {
+	// Preserve the CLI's forgiving behavior while ParseTarget remains strict
+	// for SDK callers that need validation errors.
+	if !strings.Contains(raw, "://") && strings.Count(raw, ":") == 1 {
+		host, _, _ := strings.Cut(raw, ":")
+		return &ScanTarget{Raw: raw, Host: host, Port: 80, Protocol: "tcp", Parsed: true}
+	}
+	return &ScanTarget{Raw: raw, Host: raw, Port: 80, Protocol: "tcp", Parsed: false}
+}
+
+// ParseTarget parses TCP/UDP endpoints and HTTP URLs, including bracketed
+// IPv6 addresses. It is the strict API intended for third-party callers.
+func ParseTarget(raw string) (*ScanTarget, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil, fmt.Errorf("empty target")
+	}
+	target := &ScanTarget{Raw: raw, Protocol: "tcp"}
+	if strings.Contains(raw, "://") {
+		u, err := url.Parse(raw)
+		if err != nil || u.Hostname() == "" {
+			return nil, fmt.Errorf("invalid target %q", raw)
+		}
+		switch strings.ToLower(u.Scheme) {
 		case "http", "https":
-			target.Scheme = scheme
-			target.Protocol = "tcp"
+			target.Scheme = strings.ToLower(u.Scheme)
 		case "tcp", "udp":
-			target.Protocol = scheme
+			target.Protocol = strings.ToLower(u.Scheme)
 		default:
-			// 未知协议，使用默认TCP
-			target.Protocol = "tcp"
+			return nil, fmt.Errorf("unsupported scheme %q", u.Scheme)
 		}
-		// 处理路径
-		if pathIndex := strings.Index(host, "/"); pathIndex != -1 {
-			target.Path = host[pathIndex:]
-			host = host[:pathIndex]
-		}
-		// 解析主机和端口
-		if hostPort := strings.Split(host, ":"); len(hostPort) > 1 {
-			target.Host = hostPort[0]
-			port, err := strconv.Atoi(hostPort[1])
-			if err == nil && port > 0 && port < 65536 {
-				target.Port = port
-			} else {
-				// 无效端口，使用默认端口
-				if target.Scheme == "https" {
-					target.Port = 443
-				} else {
-					target.Port = 80
-				}
+		target.Host = u.Hostname()
+		target.Path = u.EscapedPath()
+		if port := u.Port(); port != "" {
+			value, err := strconv.Atoi(port)
+			if err != nil || value < 1 || value > 65535 {
+				return nil, fmt.Errorf("invalid port in %q", raw)
 			}
-		} else {
-			target.Host = host
-			// 根据协议设置默认端口
-			if target.Scheme == "https" {
-				target.Port = 443
-			} else {
-				target.Port = 80
-			}
+			target.Port = value
 		}
 	} else {
-		// 没有协议前缀，检查是否有端口
-		if hostPort := strings.Split(raw, ":"); len(hostPort) > 1 {
-			sep := hostPort[0]
-			target.Host = sep
-			port, err := strconv.Atoi(hostPort[1])
-			if err == nil && port > 0 && port < 65536 {
-				target.Port = port
-			} else {
-				// 无效端口，使用默认端口
-				target.Port = 80
+		if host, port, err := net.SplitHostPort(raw); err == nil {
+			target.Host = host
+			value, err := strconv.Atoi(port)
+			if err != nil || value < 1 || value > 65535 {
+				return nil, fmt.Errorf("invalid port in %q", raw)
 			}
+			target.Port = value
 		} else {
-			// 只有主机名，使用默认端口
-			target.Host = raw
+			target.Host = strings.Trim(raw, "[]")
+		}
+	}
+	if target.Port == 0 {
+		if target.Scheme == "https" {
+			target.Port = 443
+		} else {
 			target.Port = 80
 		}
 	}
-	// 如果host 是IP，设置IP
 	if ip := net.ParseIP(target.Host); ip != nil {
 		target.IP = ip.String()
 	}
-	// 标记为已解析
 	target.Parsed = true
-	return target
+	return target, nil
 }
 
 // String 返回目标的字符串表示
@@ -155,7 +165,7 @@ type ScanResult struct {
 	Certificate *SSLResponse `json:"certificate,omitempty"`
 	// 附加信息
 	Extra       map[string]interface{} `json:"extra,omitempty"`
-	RawResponse []byte
+	RawResponse []byte                 `json:"raw_response,omitempty"`
 	// 匹配的探针名称
 	MatchedProbe string `json:"matched_probe"`
 	// 匹配的正则表达式
@@ -163,7 +173,9 @@ type ScanResult struct {
 	// 扫描耗时
 	Duration float64 `json:"duration"`
 	// 错误信息
-	Error error `json:"error"`
+	Error        error  `json:"-"`
+	ErrorCode    string `json:"error_code,omitempty"`
+	ErrorMessage string `json:"error_message,omitempty"`
 	// 扫描状态
 	Status    ScanStatus `json:"status"`
 	startTime time.Time
@@ -196,6 +208,19 @@ func (r *ScanResult) JSON() string {
 // Complete 完成扫描结果
 func (r *ScanResult) Complete(err error) {
 	r.Error = err
+	if err != nil {
+		r.ErrorMessage = err.Error()
+		switch {
+		case errors.Is(err, context.Canceled):
+			r.ErrorCode = "canceled"
+		case errors.Is(err, context.DeadlineExceeded):
+			r.ErrorCode = "deadline_exceeded"
+		case err.Error() == "not matched":
+			r.ErrorCode = "not_matched"
+		default:
+			r.ErrorCode = "scan_error"
+		}
+	}
 	r.endTime = time.Now()
 	r.Duration = r.endTime.Sub(r.startTime).Seconds()
 	// 根据错误类型设置状态
