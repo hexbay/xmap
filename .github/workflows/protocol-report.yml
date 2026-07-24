@@ -3,6 +3,7 @@ name: Protocol Coverage Report
 on:
   push:
     tags: ["v*"]
+  workflow_dispatch:
 
 permissions:
   contents: read
