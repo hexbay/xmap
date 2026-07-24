@@ -10,7 +10,6 @@ import (
 	"github.com/hexbay/xmap/pkg/probe"
 	"github.com/hexbay/xmap/pkg/types"
 	"github.com/hexbay/xmap/pkg/utils"
-	"github.com/projectdiscovery/gologger"
 )
 
 // ServiceScanner 默认扫描器实现
@@ -18,16 +17,17 @@ type ServiceScanner struct {
 	// 版本强度
 	probeStore *probe.Store
 	transport  Transport
+	logger     Logger
 	options    *types.Options
 }
 
 // NewServiceScanner 创建新的扫描器
 func NewServiceScanner(options *types.Options) (*ServiceScanner, error) {
-	return NewServiceScannerWithDependencies(options, nil, nil)
+	return NewServiceScannerWithDependencies(options, nil, nil, nil)
 }
 
 // NewServiceScannerWithDependencies is the composition root for scanner I/O.
-func NewServiceScannerWithDependencies(options *types.Options, transport Transport, limiter types.RateLimiter) (*ServiceScanner, error) {
+func NewServiceScannerWithDependencies(options *types.Options, transport Transport, limiter types.RateLimiter, logger Logger) (*ServiceScanner, error) {
 	// 创建默认选项
 	probeStore, err := probe.GetStoreWithOptions(options.NmapProneName, options.VersionIntensity, false)
 	if err != nil {
@@ -40,9 +40,13 @@ func NewServiceScannerWithDependencies(options *types.Options, transport Transpo
 		}
 	}
 	transport = NewRateLimitedTransport(transport, limiter)
+	if logger == nil {
+		logger = noopLogger{}
+	}
 	return &ServiceScanner{
 		probeStore: probeStore,
 		transport:  transport,
+		logger:     logger,
 		options:    options,
 	}, nil
 }
@@ -51,7 +55,7 @@ func NewServiceScannerWithDependencies(options *types.Options, transport Transpo
 // transport. This supports custom DNS, proxies, network namespaces and test
 // harnesses without exposing scanner internals.
 func NewServiceScannerWithTransport(options *types.Options, transport Transport) (*ServiceScanner, error) {
-	return NewServiceScannerWithDependencies(options, transport, nil)
+	return NewServiceScannerWithDependencies(options, transport, nil, nil)
 }
 
 func (s *ServiceScanner) Close() error {
@@ -77,7 +81,7 @@ func (s *ServiceScanner) ScanWithContext(ctx context.Context, target *types.Scan
 		result.Complete(err)
 		return result, err
 	}
-	gologger.Debug().Msgf("start scan %s", target.String())
+	s.logger.Debug(ctx, "scan started", "target", target.String())
 	if s.options.MaxTimeout > 0 {
 		// ctx 包裹
 		var cancel context.CancelFunc
@@ -88,17 +92,16 @@ func (s *ServiceScanner) ScanWithContext(ctx context.Context, target *types.Scan
 	// 执行扫描
 	err := s.executeProbes(ctx, target, probes, false, result)
 	if err != nil {
-		gologger.Debug().Msgf("TCP scan failed: %v", err)
+		s.logger.Error(ctx, err, "scan failed", "target", target.String())
 	}
 	if result.Service == "ssl" {
 		certInfo, err := utils.ParseCertificatesFromServerHello(result.RawResponse)
 		if err == nil {
 			result.Certificate = certInfo
-			gologger.Debug().Msgf("parse certificates from server hello success: %v", certInfo)
 		}
 		probes = s.selectProbes(target.Protocol, target.Port, true)
 		if tlsErr := s.executeProbes(ctx, target, probes, true, result); tlsErr != nil {
-			gologger.Debug().Msgf("SSL inner-service scan failed: %v", tlsErr)
+			s.logger.Debug(ctx, "tls inner-service scan failed", "target", target.String(), "error", tlsErr)
 			// A successful TLS outer-layer fingerprint remains a valid result even
 			// when the encrypted application protocol cannot be identified.
 			err = nil
@@ -144,13 +147,15 @@ func (s *ServiceScanner) executeUDPProbes(ctx context.Context, target *types.Sca
 		// UDP 不支持 SSL/TLS
 		response, err := s.executeUDPProbeWithRetries(ctx, target, pb, result)
 		observer.watch(response, err)
-		if s.options.DebugResponse && len(response) > 0 {
-			gologger.Print().Msgf("Read (%d bytes) for UDP probe %s on %s:%d:\n%s", len(response), pb.Name, target.IP, target.Port, formatProbeData(response))
+		fields := []any{"target", target.String(), "probe", pb.Name, "response_bytes", len(response)}
+		if s.options.DebugResponse {
+			fields = append(fields, "response", append([]byte(nil), response...))
 		}
+		s.logger.Debug(ctx, "probe response", fields...)
 		if len(response) > 0 {
 			matchResult, err := pb.Match(response)
 			if err != nil {
-				gologger.Debug().Msgf("匹配错误: %v", err)
+				s.logger.Error(ctx, err, "probe match failed", "target", target.String(), "probe", pb.Name)
 				continue
 			}
 			if matchResult != nil {
@@ -159,10 +164,7 @@ func (s *ServiceScanner) executeUDPProbes(ctx context.Context, target *types.Sca
 				result.RawResponse = response
 				result.MatchedProbe = pb.Name
 				// 如果是通过回退匹配的，记录日志
-				if matchResult.IsFallback {
-					gologger.Debug().Msgf("通过回退匹配成功: %s -> %s, 路径: %v",
-						pb.Name, matchResult.Probe.Name, matchResult.FallbackPath)
-				}
+				s.logger.Debug(ctx, "probe matched", "target", target.String(), "probe", pb.Name, "service", matchResult.Match.Service)
 
 				// 设置额外信息
 				if matchResult.VersionInfo != nil {
@@ -206,27 +208,21 @@ func (s *ServiceScanner) executeTCPProbes(ctx context.Context, target *types.Sca
 		response, err := s.executeTCPProbeWithRetries(ctx, target, pb, useSSL, scheduler.remaining(), result)
 		observer.watch(response, err)
 		scheduler.observe(response, err)
-		if s.options.DebugResponse && len(response) > 0 {
-			gologger.Print().Msgf("Read (%d bytes) for TCP probe %s on %s:%d:\n%s", len(response), pb.Name, target.IP, target.Port, formatProbeData(response))
+		fields := []any{"target", target.String(), "probe", pb.Name, "tls", useSSL, "response_bytes", len(response)}
+		if s.options.DebugResponse {
+			fields = append(fields, "response", append([]byte(nil), response...))
 		}
+		s.logger.Debug(ctx, "probe response", fields...)
 		if len(response) > 0 {
 			matchResult, err := pb.Match(response)
 			if err != nil {
-				gologger.Debug().Msgf("匹配错误: %v", err)
+				s.logger.Error(ctx, err, "probe match failed", "target", target.String(), "probe", pb.Name, "tls", useSSL)
 				continue
 			}
 			// 如果匹配成功
 			if matchResult != nil {
-				if useSSL {
-					gologger.Debug().Msgf("Matched probe %s on (ssl)%s://%s:%d", pb.Name, matchResult.Match.Service, target.IP, target.Port)
-				} else {
-					gologger.Debug().Msgf("Matched probe %s on %s://%s:%d", pb.Name, matchResult.Match.Service, target.IP, target.Port)
-				}
+				s.logger.Debug(ctx, "probe matched", "target", target.String(), "probe", pb.Name, "service", matchResult.Match.Service, "tls", useSSL)
 				// 如果是通过回退匹配的，记录日志
-				if matchResult.IsFallback {
-					gologger.Debug().Msgf("通过回退匹配成功: %s -> %s, 路径: %v",
-						pb.Name, matchResult.Probe.Name, matchResult.FallbackPath)
-				}
 				// 设置服务信息
 				result.Extra = matchResult.VersionInfo
 				result.Service = matchResult.Match.Service
@@ -274,17 +270,14 @@ func (s *ServiceScanner) executeTCPProbe(ctx context.Context, target *types.Scan
 
 	raw := replaceProbeRaw(probe.SendData, target)
 	_, err = conn.Write(raw, WritePolicy{Timeout: timeout})
+	fields := []any{"target", target.String(), "probe", probe.Name, "tls", useSSL, "request_bytes", len(raw)}
 	if s.options.DebugRequest {
-		gologger.Print().Msgf("Dump TCP Request For %s probe %s\n%s", target.String(), probe.Name, formatProbeData(raw))
+		fields = append(fields, "request", append([]byte(nil), raw...))
 	}
-	if useSSL {
-		gologger.Debug().Msgf("Send %s %d bytes to [ssl://%s:%d]", probe.Name, len(raw), target.Host, target.Port)
-	} else {
-		gologger.Debug().Msgf("Send %s %d bytes to [tcp://%s:%d]", probe.Name, len(raw), target.Host, target.Port)
-	}
+	s.logger.Debug(ctx, "probe sent", fields...)
 
 	if err != nil {
-		gologger.Debug().Msgf("TCP write failed for [%s:%d]: %v", target.IP, target.Port, err)
+		s.logger.Error(ctx, err, "probe write failed", "target", target.String(), "probe", probe.Name, "tls", useSSL)
 		return nil, WriteDataError
 	}
 	response, err := conn.Read(ReadPolicy{OverallTimeout: timeout, IdleTimeout: 50 * time.Millisecond, MaxBytes: 4096})
@@ -294,7 +287,6 @@ func (s *ServiceScanner) executeTCPProbe(ctx context.Context, target *types.Scan
 	}
 
 	if err != nil {
-		gologger.Debug().Msgf("TCP read failed for [%s:%d]: %v", target.Host, target.Port, err)
 		return response, classifyReadError(err)
 	}
 	return response, nil
@@ -327,13 +319,14 @@ func (s *ServiceScanner) executeUDPProbe(ctx context.Context, target *types.Scan
 	// 发送探针数据
 	raw := replaceProbeRaw(probe.SendData, target)
 	_, err = conn.Write(raw, WritePolicy{Timeout: timeout / 2})
+	fields := []any{"target", target.String(), "probe", probe.Name, "request_bytes", len(raw)}
 	if s.options.DebugRequest {
-		gologger.Print().Msgf("Dump UDP Request For %s probe %s\n%s", target.String(), probe.Name, formatProbeData(raw))
+		fields = append(fields, "request", append([]byte(nil), raw...))
 	}
-	gologger.Debug().Msgf("Sent %d bytes to [udp://%s:%d]", len(raw), target.Host, target.Port)
+	s.logger.Debug(ctx, "probe sent", fields...)
 
 	if err != nil {
-		gologger.Debug().Msgf("UDP write failed for [%s:%d]: %v", target.Host, target.Port, err)
+		s.logger.Error(ctx, err, "probe write failed", "target", target.String(), "probe", probe.Name)
 		return nil, err
 	}
 

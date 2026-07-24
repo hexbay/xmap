@@ -34,6 +34,7 @@ type EngineConfig struct {
 	Options     *types.Options
 	Transport   scanner.Transport
 	RateLimiter types.RateLimiter
+	Logger      scanner.Logger
 }
 
 func DefaultEngineConfig() EngineConfig {
@@ -66,7 +67,7 @@ func (x *XMap) init(config EngineConfig) error {
 	// 使用sync.Once确保只初始化一次
 	var initErr error
 	// 创建服务扫描器
-	x.serviceScanner, initErr = scanner.NewServiceScannerWithDependencies(x.options, config.Transport, config.RateLimiter)
+	x.serviceScanner, initErr = scanner.NewServiceScannerWithDependencies(x.options, config.Transport, config.RateLimiter, config.Logger)
 	if initErr != nil {
 		return initErr
 	}

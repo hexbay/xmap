@@ -2,7 +2,6 @@ package scanner
 
 import (
 	"errors"
-	"github.com/projectdiscovery/gologger"
 	"github.com/hexbay/xmap/pkg/types"
 )
 
@@ -57,7 +56,6 @@ func (p *PortObserverEntry) Reset() {
 }
 func (p *PortObserverEntry) watch(response []byte, err error) {
 	//	通过观察结果、更新观察状态
-	gologger.Debug().Msgf("[observer] watching: %s response length: %d err: %v", p.target.String(), len(response), err)
 	if len(response) > 0 {
 		p.isOpen = true
 		p.consecutiveClose = 0

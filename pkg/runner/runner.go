@@ -6,6 +6,7 @@ import (
 	"github.com/hexbay/xmap/pkg/api"
 	"github.com/hexbay/xmap/pkg/input"
 	"github.com/hexbay/xmap/pkg/output"
+	"github.com/hexbay/xmap/pkg/scanner"
 	"github.com/hexbay/xmap/pkg/types"
 	"github.com/hexbay/xmap/pkg/utils"
 	"github.com/projectdiscovery/gologger"
@@ -28,7 +29,7 @@ func New(options *types.Options) (*Runner, error) {
 	configureLogger(options)
 
 	// 创建 XMap 实例
-	xmapInstance, err := api.NewEngine(api.EngineConfig{Options: options})
+	xmapInstance, err := api.NewEngine(api.EngineConfig{Options: options, Logger: scanner.GologgerLogger{DebugRequest: options.DebugRequest, DebugResponse: options.DebugResponse}})
 	if err != nil {
 		return nil, err
 	}
