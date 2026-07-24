@@ -17,7 +17,7 @@
   {"name":"postgres", "target":"10.254.0.12:5432", "expected":"postgresql"},
   {"name":"mysql", "target":"10.254.0.13:3306", "expected":"mysql"},
   {"name":"mongodb", "target":"10.254.0.20:27017", "expected":"mongodb"},
-  {"name":"elasticsearch", "target":"10.254.0.20:9200", "expected":"elasticsearch"},
+  {"name":"elasticsearch", "target":"10.254.0.20:9200", "expected":"http"},
   {"name":"ldap", "target":"10.254.0.20:389", "expected":"ldap"},
   {"name":"ldaps", "target":"10.254.0.20:636", "expected":"ldaps", "accepted":["ldap"], "requireSSL":true},
   {"name":"smb", "target":"10.254.0.14:445", "expected":"smb"},
