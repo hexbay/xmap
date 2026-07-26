@@ -9,6 +9,7 @@ import (
 	"sync"
 
 	"github.com/projectdiscovery/gologger"
+	"golang.org/x/sync/singleflight"
 )
 
 // 默认探针存储实例
@@ -18,12 +19,21 @@ var (
 	// 存储缓存，键为 "文件路径_版本强度"
 	storeCache      = make(map[string]*Store)
 	storeCacheMutex sync.RWMutex
+	storeLoadGroup  singleflight.Group
 )
 
 //go:embed nmap-service-probes
 var defaultProbes string
 
 var DefaultVersionIntensity = 7
+
+var loadStoreForOptions = func(fileName string, versionIntensity int) (*Store, error) {
+	store := NewProbeStore(WithFileName(fileName), WithVersionIntensity(versionIntensity))
+	if err := store.Load(); err != nil {
+		return nil, err
+	}
+	return store, nil
+}
 
 type Store struct {
 	// 互斥锁保护并发访问
@@ -293,26 +303,49 @@ func GetCacheKey(fileName string, versionIntensity int) string {
 // GetStoreWithOptions GetStoreWithIntensity 获取指定版本强度的探针存储
 func GetStoreWithOptions(filename string, versionIntensity int, reload bool) (*Store, error) {
 	cacheKey := GetCacheKey(filename, versionIntensity)
-	storeCacheMutex.RLock()
-	if !reload {
-		if store, ok := storeCache[cacheKey]; ok {
-			storeCacheMutex.RUnlock()
-			return store, nil
-		}
-	}
-	storeCacheMutex.RUnlock()
 	probeFilePath := filename
 	if probeFilePath == "" {
 		probeFilePath = GetDefaultProbeFilePath()
 	}
-	store := NewProbeStore(WithFileName(probeFilePath), WithVersionIntensity(versionIntensity))
-	if err := store.Load(); err != nil {
+
+	if !reload {
+		storeCacheMutex.RLock()
+		if store, ok := storeCache[cacheKey]; ok {
+			storeCacheMutex.RUnlock()
+			return store, nil
+		}
+		storeCacheMutex.RUnlock()
+	}
+
+	flightKey := cacheKey
+	if reload {
+		flightKey = "reload:" + cacheKey
+	}
+
+	value, err, _ := storeLoadGroup.Do(flightKey, func() (interface{}, error) {
+		if !reload {
+			storeCacheMutex.RLock()
+			if store, ok := storeCache[cacheKey]; ok {
+				storeCacheMutex.RUnlock()
+				return store, nil
+			}
+			storeCacheMutex.RUnlock()
+		}
+
+		store, err := loadStoreForOptions(probeFilePath, versionIntensity)
+		if err != nil {
+			return nil, err
+		}
+
+		storeCacheMutex.Lock()
+		storeCache[cacheKey] = store
+		storeCacheMutex.Unlock()
+		return store, nil
+	})
+	if err != nil {
 		return nil, err
 	}
-	storeCacheMutex.Lock()
-	storeCache[cacheKey] = store
-	storeCacheMutex.Unlock()
-	return store, nil
+	return value.(*Store), nil
 }
 
 // Clear 清空探针存储

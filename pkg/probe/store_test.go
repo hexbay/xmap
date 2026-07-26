@@ -1,9 +1,13 @@
 package probe
 
 import (
+	"errors"
 	"fmt"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -107,4 +111,125 @@ match generic m|^generic|
 
 	exhaustive := store.GetAllProbesForPort(TCP, 6379, false)
 	assert.True(t, checkSorting(exhaustive, "GenericHigh", len(exhaustive)))
+}
+
+func TestGetStoreWithOptionsDeduplicatesConcurrentLoads(t *testing.T) {
+	originalLoader := loadStoreForOptions
+	defer func() {
+		loadStoreForOptions = originalLoader
+	}()
+
+	storeCacheMutex.Lock()
+	storeCache = make(map[string]*Store)
+	storeCacheMutex.Unlock()
+
+	var loadCalls atomic.Int32
+	started := make(chan struct{}, 32)
+	release := make(chan struct{})
+
+	loadStoreForOptions = func(fileName string, versionIntensity int) (*Store, error) {
+		loadCalls.Add(1)
+		started <- struct{}{}
+		<-release
+		return NewProbeStore(WithFileName(fileName), WithVersionIntensity(versionIntensity)), nil
+	}
+
+	const goroutines = 32
+	results := make(chan *Store, goroutines)
+	errs := make(chan error, goroutines)
+	start := make(chan struct{})
+	var ready sync.WaitGroup
+	var wg sync.WaitGroup
+
+	for range goroutines {
+		ready.Add(1)
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			ready.Done()
+			<-start
+			store, err := GetStoreWithOptions("test-probes", 9, false)
+			errs <- err
+			results <- store
+		}()
+	}
+
+	ready.Wait()
+	close(start)
+	<-started
+	time.Sleep(20 * time.Millisecond)
+	close(release)
+	wg.Wait()
+	close(errs)
+	close(results)
+
+	for err := range errs {
+		assert.NoError(t, err)
+	}
+
+	var first *Store
+	for store := range results {
+		if first == nil {
+			first = store
+			continue
+		}
+		assert.Same(t, first, store)
+	}
+
+	assert.EqualValues(t, 1, loadCalls.Load())
+}
+
+func TestGetStoreWithOptionsSharesConcurrentLoadErrors(t *testing.T) {
+	originalLoader := loadStoreForOptions
+	defer func() {
+		loadStoreForOptions = originalLoader
+	}()
+
+	storeCacheMutex.Lock()
+	storeCache = make(map[string]*Store)
+	storeCacheMutex.Unlock()
+
+	expectedErr := errors.New("load failed")
+	var loadCalls atomic.Int32
+	started := make(chan struct{}, 16)
+	release := make(chan struct{})
+
+	loadStoreForOptions = func(fileName string, versionIntensity int) (*Store, error) {
+		loadCalls.Add(1)
+		started <- struct{}{}
+		<-release
+		return nil, expectedErr
+	}
+
+	const goroutines = 16
+	errs := make(chan error, goroutines)
+	start := make(chan struct{})
+	var ready sync.WaitGroup
+	var wg sync.WaitGroup
+
+	for range goroutines {
+		ready.Add(1)
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			ready.Done()
+			<-start
+			_, err := GetStoreWithOptions("test-probes", 9, false)
+			errs <- err
+		}()
+	}
+
+	ready.Wait()
+	close(start)
+	<-started
+	time.Sleep(20 * time.Millisecond)
+	close(release)
+	wg.Wait()
+	close(errs)
+
+	for err := range errs {
+		assert.ErrorIs(t, err, expectedErr)
+	}
+
+	assert.EqualValues(t, 1, loadCalls.Load())
 }
